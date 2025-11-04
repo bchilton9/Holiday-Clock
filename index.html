@@ -69,7 +69,7 @@
   }
 
   #date {
-    font-size:22px;
+    font-size:28px;
     margin-bottom:4px;
     text-shadow:0 2px 10px var(--shadow);
   }
@@ -77,20 +77,20 @@
   #time {
     font-weight:700;
     line-height:1;
-    margin:4px 0;
+    margin:6px 0;
     text-shadow:0 6px 16px var(--shadow);
-    font-size: clamp(60px, 30vw, 200px);
+    font-size: clamp(90px, 30vw, 200px);
   }
 
   #countdown {
-    font-size:22px;
-    margin-top:6px;
+    font-size:28px;
+    margin-top:10px;
     text-shadow:0 4px 10px var(--shadow);
   }
 
   #today {
-    margin-top:6px;
-    font-size:24px;
+    margin-top:10px;
+    font-size:30px;
     font-weight:700;
     color:var(--accent);
     text-shadow:0 6px 14px var(--shadow);
@@ -168,10 +168,13 @@ function update(){
     weekday:"long", month:"long", day:"numeric"
   });
 
-  /* TIME */
-  elTime.textContent = now.toLocaleTimeString(undefined,{
-    hour:"numeric", minute:"2-digit"
+  /* TIME -- Option A remove AM/PM */
+  let rawTime = now.toLocaleTimeString([], {
+    hour:"numeric",
+    minute:"2-digit"
   });
+  // strip AM/PM
+  elTime.textContent = rawTime.replace(/ ?[AP]M?/i, "");
 
   /* COUNTDOWN */
   const diff = next.date - now;
@@ -185,34 +188,26 @@ function update(){
     elCount.textContent = `${days} day${days!==1?"s":""} until ${next.name}`;
   }
 
-  /* Load right-side character if exists */
+  /* Right-side character if present */
   setCharacter(next.name);
-  
-  /* Optional background loader (folder: assets/) */
   setBG(next.name);
 }
 
 function setCharacter(name){
   elChar.innerHTML = "";
-
   const base = name.toLowerCase().replace(/[^a-z0-9]/g,"");
   const files = [
     `${base}-char.webp`,
     `${base}-char.gif`,
     `${base}-char.mp4`
   ];
-
   tryNext(0);
-
   function tryNext(i){
     if(i >= files.length) return;
     const url = "assets/" + files[i];
     if(files[i].endsWith(".mp4")){
       const v = document.createElement("video");
-      v.src = url;
-      v.autoplay = true;
-      v.loop = true;
-      v.muted = true;
+      v.src = url; v.autoplay = true; v.loop = true; v.muted = true;
       v.onloadeddata = ()=>{ elChar.innerHTML=""; elChar.appendChild(v); };
       v.onerror = ()=> tryNext(i+1);
     } else {
@@ -232,19 +227,13 @@ function setBG(name){
     `${base}-bg.jpg`,
     `${base}-bg.mp4`
   ];
-
   tryNext(0);
-  
   function tryNext(i){
     if(i >= files.length) return;
     const url = "assets/" + files[i];
-
     if(files[i].endsWith(".mp4")){
       const v = document.createElement("video");
-      v.src = url;
-      v.autoplay = true;
-      v.loop = true;
-      v.muted = true;
+      v.src = url; v.autoplay = true; v.loop = true; v.muted = true;
       v.onloadeddata = ()=>{ elBG.innerHTML=""; elBG.appendChild(v); };
       v.onerror = ()=> tryNext(i+1);
     } else {
