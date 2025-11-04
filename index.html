@@ -1,1 +1,264 @@
-clock here soon
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Holiday Clock</title>
+
+<style>
+  :root{
+    --fg: #ffffff;
+    --shadow: rgba(0,0,0,0.55);
+    --accent: #ffd24d;
+    --bg-dark: #0f1720;
+  }
+  html,body{
+    height:100%;
+    margin:0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto;
+    background: var(--bg-dark);
+    color:var(--fg);
+    overflow:hidden;
+  }
+
+  #root{
+    position:relative;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  #bg {
+    position:absolute;
+    inset:0;
+    z-index:0;
+    background-size:cover;
+    background-position:center;
+  }
+
+  #bg video, #bg img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+  }
+
+  #overlay-dim {
+    position:absolute;
+    inset:0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.35));
+    z-index:1;
+  }
+
+  /* LEFT text, RIGHT character */
+  .layout {
+    z-index:2;
+    display:flex;
+    width:94%;
+    max-width:480px;
+    justify-content:space-between;
+    align-items:center;
+  }
+
+  .text-block {
+    text-align:left;
+    max-width:65%;
+    user-select:none;
+  }
+
+  #date {
+    font-size:22px;
+    margin-bottom:4px;
+    text-shadow:0 2px 10px var(--shadow);
+  }
+
+  #time {
+    font-weight:700;
+    line-height:1;
+    margin:4px 0;
+    text-shadow:0 6px 16px var(--shadow);
+    font-size: clamp(60px, 30vw, 200px);
+  }
+
+  #countdown {
+    font-size:22px;
+    margin-top:6px;
+    text-shadow:0 4px 10px var(--shadow);
+  }
+
+  #today {
+    margin-top:6px;
+    font-size:24px;
+    font-weight:700;
+    color:var(--accent);
+    text-shadow:0 6px 14px var(--shadow);
+  }
+
+  #character {
+    width:120px;
+    height:120px;
+    max-width:35%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #character img, #character video {
+    width:100%;
+    height:100%;
+    object-fit:contain;
+  }
+</style>
+</head>
+
+<body>
+<div id="root">
+  <div id="bg"></div>
+  <div id="overlay-dim"></div>
+
+  <div class="layout">
+    <div class="text-block">
+      <div id="date"></div>
+      <div id="time"></div>
+      <div id="countdown"></div>
+      <div id="today"></div>
+    </div>
+
+    <div id="character"></div>
+  </div>
+</div>
+
+<script>
+const elDate = document.getElementById("date");
+const elTime = document.getElementById("time");
+const elCount = document.getElementById("countdown");
+const elToday = document.getElementById("today");
+const elChar = document.getElementById("character");
+const elBG = document.getElementById("bg");
+
+/* Core US holiday list (month/day) */
+const holidays = [
+  { name:"Thanksgiving",  m:11, d:28 },
+  { name:"Christmas",     m:12, d:25 },
+  { name:"New Year's",    m:1,  d:1  }
+];
+
+function getNextHoliday(){
+  const now = new Date();
+  const y = now.getFullYear();
+  let upcoming = [];
+
+  holidays.forEach(h=>{
+    let dt = new Date(y, h.m-1, h.d);
+    if(dt < now) dt = new Date(y+1, h.m-1, h.d);
+    upcoming.push({ ...h, date:dt });
+  });
+
+  upcoming.sort((a,b)=>a.date - b.date);
+  return upcoming[0];
+}
+
+function update(){
+  const now = new Date();
+  const next = getNextHoliday();
+
+  /* DATE */
+  elDate.textContent = now.toLocaleDateString(undefined,{
+    weekday:"long", month:"long", day:"numeric"
+  });
+
+  /* TIME */
+  elTime.textContent = now.toLocaleTimeString(undefined,{
+    hour:"numeric", minute:"2-digit"
+  });
+
+  /* COUNTDOWN */
+  const diff = next.date - now;
+  const days = Math.floor(diff / (1000*60*60*24));
+
+  if(days === 0){
+    elCount.textContent = "";
+    elToday.textContent = "Happy " + next.name + "!";
+  } else {
+    elToday.textContent = "";
+    elCount.textContent = `${days} day${days!==1?"s":""} until ${next.name}`;
+  }
+
+  /* Load right-side character if exists */
+  setCharacter(next.name);
+  
+  /* Optional background loader (folder: assets/) */
+  setBG(next.name);
+}
+
+function setCharacter(name){
+  elChar.innerHTML = "";
+
+  const base = name.toLowerCase().replace(/[^a-z0-9]/g,"");
+  const files = [
+    `${base}-char.webp`,
+    `${base}-char.gif`,
+    `${base}-char.mp4`
+  ];
+
+  tryNext(0);
+
+  function tryNext(i){
+    if(i >= files.length) return;
+    const url = "assets/" + files[i];
+    if(files[i].endsWith(".mp4")){
+      const v = document.createElement("video");
+      v.src = url;
+      v.autoplay = true;
+      v.loop = true;
+      v.muted = true;
+      v.onloadeddata = ()=>{ elChar.innerHTML=""; elChar.appendChild(v); };
+      v.onerror = ()=> tryNext(i+1);
+    } else {
+      const img = new Image();
+      img.onload = ()=>{ elChar.innerHTML=""; elChar.appendChild(img); };
+      img.onerror = ()=> tryNext(i+1);
+      img.src = url;
+    }
+  }
+}
+
+function setBG(name){
+  elBG.innerHTML = "";
+  const base = name.toLowerCase().replace(/[^a-z0-9]/g,"");
+  const files = [
+    `${base}-bg.webp`,
+    `${base}-bg.jpg`,
+    `${base}-bg.mp4`
+  ];
+
+  tryNext(0);
+  
+  function tryNext(i){
+    if(i >= files.length) return;
+    const url = "assets/" + files[i];
+
+    if(files[i].endsWith(".mp4")){
+      const v = document.createElement("video");
+      v.src = url;
+      v.autoplay = true;
+      v.loop = true;
+      v.muted = true;
+      v.onloadeddata = ()=>{ elBG.innerHTML=""; elBG.appendChild(v); };
+      v.onerror = ()=> tryNext(i+1);
+    } else {
+      const img = new Image();
+      img.onload = ()=>{ elBG.innerHTML=""; elBG.appendChild(img); };
+      img.onerror = ()=> tryNext(i+1);
+      img.src = url;
+    }
+  }
+}
+
+update();
+setInterval(update, 1000);
+</script>
+
+</body>
+</html>
