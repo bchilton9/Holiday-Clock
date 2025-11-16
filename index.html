@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no" />
-<title>Holiday Clock -- Themes + Runners</title>
+<title>Holiday Clock — Themes + Runners</title>
 <style>
   :root{
     --bg: #000;
@@ -228,7 +228,7 @@ const RUN_DURATION_SEC = 6; // will be scaled by screen width in JS
    UTIL / DATE HELPERS
    ============================ */
 
-// Easter (Western) -- Anonymous Gregorian algorithm
+// Easter (Western) — Anonymous Gregorian algorithm
 function easterDate(year) {
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -385,7 +385,7 @@ function pickRunnerForHoliday(holidayKey) {
 
 function tryRunnerAsset(name) {
   // checks the asset filenames in order by creating an element and seeing if it loads.
-  // We avoid HEAD requests -- simply test by creating an image/video and handling onerror.
+  // We avoid HEAD requests — simply test by creating an image/video and handling onerror.
   return new Promise((resolve) => {
     const tryList = RUNNER_EXT_ORDER.map(ext => `assets/${name}${ext}`);
     let i = 0;
@@ -469,7 +469,7 @@ async function spawnRunner(holidayKey) {
     sprite.style.backgroundSize = 'cover';
     sprite.style.width = '100%';
     sprite.style.height = '100%';
-    // compute number of frames from image width/height? we don't know -- assume 6
+    // compute number of frames from image width/height? we don't know — assume 6
     const frames = asset.frames || 6;
     // create CSS animation for the sprite frames
     const stepAnimName = `spriteAnim_${Date.now()}_${Math.floor(Math.random()*1000)}`;
