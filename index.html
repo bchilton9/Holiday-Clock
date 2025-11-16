@@ -1,23 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no" />
-<title>Holiday Clock</title>
-
+<title>Holiday Clock -- Auto Scale</title>
 <style>
   :root{
     --fg: #ffffff;
     --shadow: rgba(0,0,0,0.55);
     --accent: #ffd24d;
     --bg-dark: #0f1720;
+
+    /* these will be overwritten by JS scaling */
+    --size-date: 42px;
+    --size-time: 150px;
+    --size-count: 40px;
+    --size-today: 46px;
+    --char-size: 150px;
   }
+
   html,body{
     height:100%;
     margin:0;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     background: var(--bg-dark);
     color:var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
     overflow:hidden;
   }
 
@@ -25,7 +34,6 @@
     position:relative;
     width:100%;
     height:100%;
-    overflow:hidden;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -38,220 +46,283 @@
     background-size:cover;
     background-position:center;
   }
-
-  #bg video, #bg img {
-    width:100%;
-    height:100%;
-    object-fit:cover;
-  }
+  #bg video, #bg img { width:100%; height:100%; object-fit:cover; }
 
   #overlay-dim {
     position:absolute;
     inset:0;
-    background: linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.35));
+    background: linear-gradient(180deg, rgba(0,0,0,0.22), rgba(0,0,0,0.34));
     z-index:1;
   }
 
-  /* LEFT text, RIGHT character */
+  /* Layout container uses fraction of the viewport and then JS scales the font sizes */
   .layout {
     z-index:2;
     display:flex;
     width:94%;
-    height:100%;
-    max-width:900px;
+    height:92%;
+    max-width:1200px;
     justify-content:space-between;
     align-items:center;
   }
 
   .text-block {
     text-align:left;
-    max-width:65%;
+    max-width:66%;
     user-select:none;
+    /* use relative spacing so everything scales nicely */
   }
 
-  /* Pi-optimized BIG fonts */
   #date {
-    font-size: 42px;
-    margin-bottom:10px;
+    font-size: var(--size-date);
+    margin:0 0 6px 0;
+    line-height:1;
     text-shadow:0 2px 10px var(--shadow);
   }
 
   #time {
-    font-size: 150px; /* fixed giant text for TFT */
-    font-weight:700;
-    line-height:1;
+    font-size: var(--size-time);
     margin:0;
-    padding:0;
+    line-height:0.9;
+    font-weight:700;
     text-shadow:0 6px 16px var(--shadow);
+    white-space:nowrap;
   }
 
   #countdown {
-    font-size: 40px;
-    margin-top:15px;
+    font-size: var(--size-count);
+    margin-top:8px;
     text-shadow:0 4px 10px var(--shadow);
   }
 
   #today {
-    margin-top:15px;
-    font-size:46px;
+    margin-top:8px;
+    font-size: var(--size-today);
     font-weight:700;
     color:var(--accent);
     text-shadow:0 6px 14px var(--shadow);
   }
 
-  /* Character container */
   #character {
-    width:150px;
-    height:150px;
-    max-width:40%;
+    width: var(--char-size);
+    height: var(--char-size);
     display:flex;
     align-items:center;
     justify-content:center;
   }
-
   #character img, #character video {
     width:100%;
     height:100%;
     object-fit:contain;
+    pointer-events:none;
   }
+
+  /* Small fallback safety: keep things inside edges */
+  .layout, .text-block { box-sizing: border-box; padding: 6px; }
 </style>
 </head>
-
 <body>
-<div id="root">
-  <div id="bg"></div>
-  <div id="overlay-dim"></div>
+<div id="root" role="main" aria-live="polite">
+  <div id="bg" aria-hidden="true"></div>
+  <div id="overlay-dim" aria-hidden="true"></div>
 
   <div class="layout">
     <div class="text-block">
-      <div id="date"></div>
-      <div id="time"></div>
-      <div id="countdown"></div>
-      <div id="today"></div>
+      <div id="date" aria-hidden="false"></div>
+      <div id="time" aria-hidden="false"></div>
+      <div id="countdown" aria-hidden="false"></div>
+      <div id="today" aria-hidden="false"></div>
     </div>
 
-    <div id="character"></div>
+    <div id="character" aria-hidden="true"></div>
   </div>
 </div>
 
 <script>
-const elDate = document.getElementById("date");
-const elTime = document.getElementById("time");
-const elCount = document.getElementById("countdown");
-const elToday = document.getElementById("today");
-const elChar = document.getElementById("character");
-const elBG = document.getElementById("bg");
+/* ---------- Configuration ---------- */
+// Reference layout: design sizes assume this area (landscape 480x320)
+const REF_WIDTH = 480;
+const REF_HEIGHT = 320;
 
-/* Core holidays */
+// base pixel sizes at reference resolution -- JS will scale from these
+const BASE = {
+  date: 42,
+  time: 150,
+  count: 40,
+  today: 46,
+  char: 150
+};
+
+/* ---------- Holiday list (simplified) ---------- */
 const holidays = [
   { name:"Thanksgiving",  m:11, d:28 },
   { name:"Christmas",     m:12, d:25 },
   { name:"New Year's",    m:1,  d:1  }
 ];
 
+/* ---------- DOM refs ---------- */
+const elDate = document.getElementById('date');
+const elTime = document.getElementById('time');
+const elCount = document.getElementById('countdown');
+const elToday = document.getElementById('today');
+const elChar = document.getElementById('character');
+const elBG = document.getElementById('bg');
+
+/* ---------- Utility: compute holiday dates ---------- */
 function getNextHoliday(){
   const now = new Date();
   const y = now.getFullYear();
   let upcoming = [];
-
   holidays.forEach(h=>{
     let dt = new Date(y, h.m-1, h.d);
     if(dt < now) dt = new Date(y+1, h.m-1, h.d);
-    upcoming.push({ ...h, date:dt });
+    upcoming.push({...h, date: dt});
   });
-
   upcoming.sort((a,b)=>a.date - b.date);
   return upcoming[0];
 }
 
-function update(){
+/* ---------- Autoscale logic ---------- */
+function applyScale() {
+  // Use innerWidth/innerHeight as the actual rendering area Chromium uses on Pi
+  const w = window.innerWidth || document.documentElement.clientWidth;
+  const h = window.innerHeight || document.documentElement.clientHeight;
+
+  // Compute scale relative to our reference design. Choose min to fit both dimensions.
+  let scaleW = w / REF_WIDTH;
+  let scaleH = h / REF_HEIGHT;
+  let scale = Math.min(scaleW, scaleH);
+
+  // Slight safety clamps so fonts don't go tiny or huge
+  scale = Math.max(scale, 0.6);   // don't go below 60% (helps very small displays)
+  scale = Math.min(scale, 2.5);   // cap at 250% (prevents absurdly large on desktops)
+
+  // Compute sizes in px
+  const datePx  = Math.round(BASE.date * scale);
+  const timePx  = Math.round(BASE.time * scale);
+  const countPx = Math.round(BASE.count * scale);
+  const todayPx = Math.round(BASE.today * scale);
+  const charPx  = Math.round(BASE.char * scale);
+
+  // Apply to CSS variables
+  document.documentElement.style.setProperty('--size-date', datePx + 'px');
+  document.documentElement.style.setProperty('--size-time', timePx + 'px');
+  document.documentElement.style.setProperty('--size-count', countPx + 'px');
+  document.documentElement.style.setProperty('--size-today', todayPx + 'px');
+  document.documentElement.style.setProperty('--char-size', charPx + 'px');
+
+  // Optional: adjust layout spacing for very tall or narrow displays
+  // If narrow (portrait), decrease character size moderately
+  if (h / w > 1.1) {
+    const reducedChar = Math.round(charPx * 0.75);
+    document.documentElement.style.setProperty('--char-size', reducedChar + 'px');
+  }
+}
+
+/* ---------- Time / Countdown update ---------- */
+function updateClockAndCountdown() {
   const now = new Date();
   const next = getNextHoliday();
 
-  /* DATE */
-  elDate.textContent = now.toLocaleDateString(undefined,{
-    weekday:"long", month:"long", day:"numeric"
+  // Date
+  elDate.textContent = now.toLocaleDateString(undefined, {
+    weekday: "long", month: "long", day: "numeric"
   });
 
-  /* TIME -- remove AM/PM */
-  let rawTime = now.toLocaleTimeString([], {
-    hour:"numeric",
-    minute:"2-digit"
-  });
+  // Time: 12-hour numeric without AM/PM
+  let rawTime = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   elTime.textContent = rawTime.replace(/ ?[AP]M?/i, "");
 
-  /* COUNTDOWN */
+  // Countdown (days until next holiday)
+  const msPerDay = 1000*60*60*24;
   const diff = next.date - now;
-  const days = Math.floor(diff / (1000*60*60*24));
-
-  if(days === 0){
+  const days = Math.floor(diff / msPerDay);
+  if (days === 0) {
     elCount.textContent = "";
     elToday.textContent = "Happy " + next.name + "!";
   } else {
     elToday.textContent = "";
-    elCount.textContent = `${days} day${days!==1?"s":""} until ${next.name}`;
+    elCount.textContent = `${days} day${days !== 1 ? "s" : ""} until ${next.name}`;
   }
 
-  /* Right-side character */
+  // Load / refresh character and background (non-blocking)
   setCharacter(next.name);
   setBG(next.name);
 }
 
-function setCharacter(name){
-  elChar.innerHTML = "";
-  const base = name.toLowerCase().replace(/[^a-z0-9]/g,"");
-  const files = [
-    `${base}-char.webp`,
-    `${base}-char.gif`,
-    `${base}-char.mp4`
-  ];
-  tryNext(0);
-  function tryNext(i){
-    if(i >= files.length) return;
-    const url = "assets/" + files[i];
-    if(files[i].endsWith(".mp4")){
-      const v = document.createElement("video");
-      v.src = url; v.autoplay = true; v.loop = true; v.muted = true;
-      v.onloadeddata = ()=>{ elChar.innerHTML=""; elChar.appendChild(v); };
-      v.onerror = ()=> tryNext(i+1);
+/* ---------- Asset loading helpers (non-blocking) ---------- */
+function tryAssetFiles(baseName, targets, container, onLoaded) {
+  // targets: array of filenames (extensions included) tried in order
+  // container: element to receive <img> or <video>
+  // onLoaded: callback when asset applied
+  let i = 0;
+  (function tryNext() {
+    if (i >= targets.length) return;
+    const url = 'assets/' + targets[i];
+    // For efficiency on Pi avoid HEAD -- we'll attempt to load image/video and handle error
+    if (targets[i].endsWith('.mp4')) {
+      const v = document.createElement('video');
+      v.src = url; v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+      v.onloadeddata = () => { container.innerHTML = ''; container.appendChild(v); onLoaded && onLoaded(url); };
+      v.onerror = () => { i++; tryNext(); };
     } else {
       const img = new Image();
-      img.onload = ()=>{ elChar.innerHTML=""; elChar.appendChild(img); };
-      img.onerror = ()=> tryNext(i+1);
       img.src = url;
+      img.onload = () => { container.innerHTML = ''; container.appendChild(img); onLoaded && onLoaded(url); };
+      img.onerror = () => { i++; tryNext(); };
     }
-  }
+  })();
 }
 
-function setBG(name){
-  elBG.innerHTML = "";
-  const base = name.toLowerCase().replace(/[^a-z0-9]/g,"");
-  const files = [
-    `${base}-bg.webp`,
-    `${base}-bg.jpg`,
-    `${base}-bg.mp4`
-  ];
-  tryNext(0);
-  function tryNext(i){
-    if(i >= files.length) return;
-    const url = "assets/" + files[i];
-    if(files[i].endsWith(".mp4")){
-      const v = document.createElement("video");
-      v.src = url; v.autoplay = true; v.loop = true; v.muted = true;
-      v.onloadeddata = ()=>{ elBG.innerHTML=""; elBG.appendChild(v); };
-      v.onerror = ()=> tryNext(i+1);
-    } else {
-      const img = new Image();
-      img.onload = ()=>{ elBG.innerHTML=""; elBG.appendChild(img); };
-      img.onerror = ()=> tryNext(i+1);
-      img.src = url;
-    }
-  }
+let lastCharacterHoliday = null;
+function setCharacter(holidayName) {
+  if (!holidayName) return;
+  if (holidayName === lastCharacterHoliday) return; // avoid reload thrash
+  lastCharacterHoliday = holidayName;
+  elChar.innerHTML = '';
+  const base = holidayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const files = [`${base}-char.webp`, `${base}-char.gif`, `${base}-char.mp4`];
+  tryAssetFiles(base, files, elChar, ()=>{/*noop*/});
 }
 
-update();
-setInterval(update, 1000);
+let lastBgHoliday = null;
+function setBG(holidayName) {
+  if (!holidayName) return;
+  if (holidayName === lastBgHoliday) return;
+  lastBgHoliday = holidayName;
+  elBG.innerHTML = '';
+  const base = holidayName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const files = [`${base}-bg.webp`, `${base}-bg.jpg`, `${base}-bg.mp4`];
+  tryAssetFiles(base, files, elBG, ()=>{/*noop*/});
+}
+
+/* ---------- Init ---------- */
+function init() {
+  applyScale();
+  updateClockAndCountdown();
+
+  // update every second
+  setInterval(updateClockAndCountdown, 1000);
+
+  // Recompute scale on resize/orientation
+  let resizeTimeout;
+  function onResize() {
+    // Debounce slightly to avoid thrash while rotating
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      applyScale();
+    }, 80);
+  }
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
+
+  // Also apply a small hack for devices that don't report correct innerWidth initially:
+  // run again after a short delay
+  setTimeout(()=>{ applyScale(); }, 300);
+}
+
+// Start
+init();
 </script>
-
 </body>
 </html>
