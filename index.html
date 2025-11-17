@@ -62,7 +62,7 @@
 
   #date { font-size: var(--size-date); margin:0 0 8px 0; text-shadow:0 2px 10px var(--shadow); }
   #time { font-size: var(--size-time); margin:0; font-weight:700; text-shadow:0 6px 16px var(--shadow); }
-  #countdown { font-size: var(--size-count); margin-top:10px; text-shadow:0 4px 10px var(--shadow); cursor:pointer; }
+  #countdown { font-size: var(--size-count); margin-top:10px; text-shadow:0 4px 10px var(--shadow); }
   #today { margin-top:10px; font-size: var(--size-today); font-weight:700; text-shadow:0 6px 14px var(--shadow); }
 
   .runner {
@@ -284,7 +284,7 @@ const RUNNERS={
 function pickRunner(key){
   const list=RUNNERS[key];
   if(!list||!list.length){
-    return null;
+    return ["turkey","santa","bunny","pumpkin","rocket","cupid","leprechaun"][Math.floor(Math.random()*7)];
   }
   return list[Math.floor(Math.random()*list.length)];
 }
@@ -303,10 +303,7 @@ async function loadRunnerAsset(name){
 }
 
 async function spawnRunner(key){
-  if(!key) return;
   const name=pickRunner(key);
-  if(!name) return;
-
   const asset=await loadRunnerAsset(name);
   if(!asset) return;
 
@@ -364,12 +361,14 @@ setInterval(updateClock,1000);
 })();
 
 /* ============================
-   Manual Runner Trigger -- tap the countdown
+   Manual Sprite Trigger (RESTORED)
 ============================ */
-document.getElementById("countdown").addEventListener("click", () => {
-  const a = getActiveHoliday();
-  if (a.active) spawnRunner(a.key);
-});
+window.__holidayClock = window.__holidayClock || {};
+window.__holidayClock.spawnRunnerNow = function(){
+  const a=getActiveHoliday();
+  if(a.active) spawnRunner(a.key);
+  else spawnRunner("turkey"); // allow testing anytime
+};
 </script>
 </body>
 </html>
