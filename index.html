@@ -3,14 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no" />
-<title>Holiday Clock -- Themes + Runners (Daily Refresh)</title>
+<title>Holiday Clock</title>
+
 <style>
   :root{
     --bg: #000000;
     --fg: #ffffff;
     --shadow: rgba(0,0,0,0.55);
-
-    /* autoscale variables (overwritten by JS) */
     --size-date: 42px;
     --size-time: 200px;
     --size-count: 40px;
@@ -22,9 +21,8 @@
     margin:0;
     background:var(--bg);
     color:var(--fg);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing:antialiased;
-    -moz-osx-font-smoothing:grayscale;
     transition: background 1.2s ease, color 1.2s ease;
     overflow:hidden;
   }
@@ -56,423 +54,322 @@
     flex-direction:column;
     align-items:center;
     justify-content:center;
-    pointer-events:none;
   }
 
   #date, #countdown, #today {
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   #date { font-size: var(--size-date); margin:0 0 8px 0; text-shadow:0 2px 10px var(--shadow); }
-  #time { font-size: var(--size-time); margin:0; line-height:0.9; font-weight:700; text-shadow:0 6px 16px var(--shadow); white-space:nowrap; }
-  #countdown { font-size: var(--size-count); margin-top:10px; text-shadow:0 4px 10px var(--shadow); }
+  #time { font-size: var(--size-time); margin:0; font-weight:700; text-shadow:0 6px 16px var(--shadow); }
+  #countdown { font-size: var(--size-count); margin-top:10px; text-shadow:0 4px 10px var(--shadow); cursor:pointer; }
   #today { margin-top:10px; font-size: var(--size-today); font-weight:700; text-shadow:0 6px 14px var(--shadow); }
 
-  /* Runner (character) styles */
   .runner {
-    position: absolute;
-    bottom: 6%;
-    left: -30%;
-    width: 18vmin;
-    height: auto;
+    position:absolute;
+    bottom:6%;
+    left:-30%;
+    width:18vmin;
     z-index:9999;
     pointer-events:none;
-    user-select:none;
-    will-change: transform, left;
     filter: drop-shadow(0 6px 8px rgba(0,0,0,0.45));
   }
-  .sprite-run { background-repeat:no-repeat; background-size:cover; width:100%; height:100%; display:block; }
 
-  @keyframes runAcross { 0% { transform: translateX(-120%); } 100% { transform: translateX(220%); } }
+  .sprite-run { background-repeat:no-repeat; background-size:cover; width:100%; height:100%; }
 
-  /* small pulse */
-  .festive { animation: pulseColor 2.6s ease-in-out infinite; }
-  @keyframes pulseColor { 0% { transform: translateY(0); } 50% { transform: translateY(-2px); } 100% { transform: translateY(0); } }
-
-  /* Very small screens safety */
-  @media (max-width:360px) {
-    #time { letter-spacing:-0.02em; }
-  }
+  @keyframes runAcross { 0%{ transform:translateX(-120%);} 100%{ transform:translateX(220%);} }
 </style>
 </head>
+
 <body>
-  <div id="root" role="main" aria-live="polite">
-    <div class="layout">
-      <div class="text-block">
-        <div id="date"></div>
-        <div id="time"></div>
-        <div id="countdown"></div>
-        <div id="today"></div>
-      </div>
+<div id="root">
+  <div class="layout">
+    <div class="text-block">
+      <div id="date"></div>
+      <div id="time"></div>
+      <div id="countdown"></div>
+      <div id="today"></div>
     </div>
   </div>
+</div>
 
 <script>
-/* ===============================
-   CONFIG
-   =============================== */
+/* ============================
+   Scaling Reference
+============================ */
 const REF_W = 480, REF_H = 320;
 const BASE = { date:40, time:200, count:38, today:44 };
 
-const PRE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000; // 2 weeks
-const COLOR_CYCLE_MS = 3000;
-const RUNNER_MIN_MS = 15000;
-const RUNNER_MAX_MS = 90000;
-const RUN_DURATION_BASE_SEC = 6;
+function applyScale(){
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  let s = Math.min(w/REF_W, h/REF_H);
+  s = Math.max(0.55, Math.min(s, 3.0));
+  document.documentElement.style.setProperty('--size-date', BASE.date*s + 'px');
+  document.documentElement.style.setProperty('--size-time', BASE.time*s + 'px');
+  document.documentElement.style.setProperty('--size-count', BASE.count*s + 'px');
+  document.documentElement.style.setProperty('--size-today', BASE.today*s + 'px');
+}
 
-/* Holidays config */
+/* ============================
+   Holiday List
+============================ */
+const PRE_WINDOW = 14 * 24 * 60 * 60 * 1000;
+
 const HOLIDAYS = [
-  { key:"newyears", name:"New Year's", m:1, d:1 },
-  { key:"valentine", name:"Valentine's Day", m:2, d:14 },
-  { key:"stpatricks", name:"St. Patrick's Day", m:3, d:17 },
-  { key:"easter", name:"Easter", m:null, d:"easter" },
-  { key:"memorial", name:"Memorial Day", m:5, d:"lastMonday" },
-  { key:"independence", name:"4th of July", m:7, d:4 },
-  { key:"labor", name:"Labor Day", m:9, d:"firstMonday" },
-  { key:"halloween", name:"Halloween", m:10, d:31 },
-  { key:"thanksgiving", name:"Thanksgiving", m:11, d:"fourthThursday" },
-  { key:"christmas", name:"Christmas", m:12, d:25 }
+  { key:"newyears",      name:"New Year's",         m:1, d:1 },
+  { key:"valentine",     name:"Valentine's Day",    m:2, d:14 },
+  { key:"stpatricks",    name:"St. Patrick's Day",  m:3, d:17 },
+  { key:"easter",        name:"Easter",             m:null, d:"easter" },
+  { key:"memorial",      name:"Memorial Day",       m:5, d:"lastMonday" },
+  { key:"independence",  name:"4th of July",        m:7, d:4 },
+  { key:"labor",         name:"Labor Day",          m:9, d:"firstMonday" },
+  { key:"halloween",     name:"Halloween",          m:10, d:31 },
+  { key:"thanksgiving",  name:"Thanksgiving",       m:11, d:"fourthThursday" },
+  { key:"christmas",     name:"Christmas",          m:12, d:25 }
 ];
 
-/* Theme palettes (TFT-safe) */
+/* ============================
+   TFT-SAFE COLOR THEMES
+============================ */
 const THEME = {
-  newyears:    { backgrounds:["#1A0033","#330066","#00111a"], texts:["#FFD700","#E8D6FF","#FFFFFF"] },
-  valentine:   { backgrounds:["#E63963","#FF8AAE","#FFC2D4"], texts:["#FFFFFF","#FFE6EE","#FFF5FA"] },
-  stpatricks:  { backgrounds:["#0B6E27","#1FA040","#3BD25B"], texts:["#FFFFFF","#E3FFD8","#F1FFEB"] },
-  easter:      { backgrounds:["#FFD6E8","#D9D4FF","#D1F7FF"], texts:["#6A3F99","#8F538D","#725679"] },
-  memorial:    { backgrounds:["#1F3A93","#3A62C9","#6A89CC"], texts:["#FFFFFF","#DCEBFF","#EAF4FF"] },
-  independence:{ backgrounds:["#0A1A59","#8B0000","#001133"], texts:["#FFFFFF","#FFCCCC","#DDE7FF"] },
-  labor:       { backgrounds:["#332E2E","#5A4B3A","#8A6E4C"], texts:["#FFFFFF","#FFEFD7","#FFF3E6"] },
-  halloween:   { backgrounds:["#FF7A00","#CC5500","#FFA531"], texts:["#1A1A1A","#332222","#2A1200"] },
-  thanksgiving:{ backgrounds:["#A66124","#C97A2C","#E89A4F"], texts:["#FFF7E6","#FFEFD7","#FFF1C9"] },
-  christmas:   { backgrounds:["#8B0000","#0F4D1A","#004C3F"], texts:["#FFFFFF","#FFE8A3","#FFFAF2"] }
-};
-
-/* Runner mapping */
-const RUNNERS_BY_HOLIDAY = {
-  thanksgiving: ["turkey"],
-  christmas: ["santa"],
-  newyears: ["rocket","party"],
-  valentine: ["cupid"],
-  stpatricks: ["leprechaun"],
-  easter: ["bunny"],
-  halloween: ["pumpkin"],
-  independence: ["rocket"],
-  labor: ["worker"],
-  memorial: ["flag"]
-};
-
-/* Runner file suffix order */
-const RUNNER_EXT_ORDER = ["-run.webp","-run.gif","-sprite.png"];
-
-/* ===============================
-   Utilities: dates and movable holidays
-   =============================== */
-
-/* Easter: Anonymous Gregorian algorithm */
-function easterDate(year){
-  const a = year % 19;
-  const b = Math.floor(year/100);
-  const c = year % 100;
-  const d = Math.floor(b/4);
-  const e = b % 4;
-  const f = Math.floor((b+8)/25);
-  const g = Math.floor((b-f+1)/3);
-  const h = (19*a + b - d - g + 15) % 30;
-  const i = Math.floor(c/4);
-  const k = c % 4;
-  const l = (32 + 2*e + 2*i - h - k) % 7;
-  const m = Math.floor((a + 11*h + 22*l) / 451);
-  const month = Math.floor((h + l - 7*m + 114)/31);
-  const day = ((h + l - 7*m + 114) % 31) + 1;
-  return new Date(year, month-1, day);
-}
-
-function nthWeekdayOfMonth(year, monthIndex, weekday, n) {
-  const first = new Date(year, monthIndex, 1);
-  const firstWeekday = first.getDay();
-  let day = 1 + ((7 + weekday - firstWeekday) % 7) + (n-1)*7;
-  return new Date(year, monthIndex, day);
-}
-function lastWeekdayOfMonth(year, monthIndex, weekday) {
-  const last = new Date(year, monthIndex+1, 0);
-  const lastWeekday = last.getDay();
-  let day = last.getDate() - ((7 + lastWeekday - weekday) % 7);
-  return new Date(year, monthIndex, day);
-}
-
-function holidayDate(h, year) {
-  if(h.d === "easter") return easterDate(year);
-  if(h.d === "fourthThursday") return nthWeekdayOfMonth(year, 10, 4, 4);
-  if(h.d === "firstMonday") return nthWeekdayOfMonth(year, 8, 1, 1);
-  if(h.d === "lastMonday") return lastWeekdayOfMonth(year, 4, 1);
-  if(typeof h.d === "number") return new Date(year, h.m-1, h.d);
-  return null;
-}
-
-/* return active holiday within window, or {active:false} */
-function getActiveHoliday(){
-  const now = Date.now();
-  const y = (new Date()).getFullYear();
-  for(const h of HOLIDAYS){
-    let dt = holidayDate(h, y);
-    if(!dt) continue;
-    // If date already past and more than a day old, check next year
-    if(dt.getTime() + (24*60*60*1000) < now) dt = holidayDate(h, y+1);
-    const start = dt.getTime() - PRE_WINDOW_MS;
-    const end = dt.getTime() + (24*60*60*1000);
-    if(now >= start && now <= end) return { active:true, key:h.key, name:h.name, date:dt };
+  thanksgiving: {
+    backgrounds:["#F28C28","#D97904","#FFB347"],
+    texts:["#FFF8E7","#FFFFFF","#FFE8C2"]
+  },
+  christmas:{
+    backgrounds:["#8B0000","#0F4D1A","#004C3F"],
+    texts:["#FFFFFF","#FFE8A3","#FFFAF2"]
+  },
+  newyears:{
+    backgrounds:["#1A0033","#330066","#00111a"],
+    texts:["#FFD700","#E8D6FF","#FFFFFF"]
+  },
+  valentine:{
+    backgrounds:["#E63963","#FF8AAE","#FFC2D4"],
+    texts:["#FFFFFF","#FFE6EE","#FFF5FA"]
+  },
+  stpatricks:{
+    backgrounds:["#0B6E27","#1FA040","#3BD25B"],
+    texts:["#FFFFFF","#E3FFD8","#F1FFEB"]
+  },
+  easter:{
+    backgrounds:["#FFD6E8","#D9D4FF","#D1F7FF"],
+    texts:["#6A3F99","#8F538D","#725679"]
+  },
+  halloween:{
+    backgrounds:["#FF7A00","#CC5500","#FFA531"],
+    texts:["#1A1A1A","#332222","#2A1200"]
   }
-  return { active:false };
+};
+
+/* ============================
+   Movable Holiday Calculations
+============================ */
+function easterDate(year){
+  const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4);
+  const e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3);
+  const h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4;
+  const l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+  const month=Math.floor((h+l-7*m+114)/31);
+  const day=((h+l-7*m+114)%31)+1;
+  return new Date(year,month-1,day);
 }
 
-/* ===============================
-   Autoscale logic
-   =============================== */
-function applyScale(){
-  const w = window.innerWidth || document.documentElement.clientWidth;
-  const h = window.innerHeight || document.documentElement.clientHeight;
-  let s = Math.min(w/REF_W, h/REF_H);
-  s = Math.max(s, 0.55);
-  s = Math.min(s, 3.0);
-  document.documentElement.style.setProperty('--size-date', Math.round(BASE.date * s) + 'px');
-  document.documentElement.style.setProperty('--size-time', Math.round(BASE.time * s) + 'px');
-  document.documentElement.style.setProperty('--size-count', Math.round(BASE.count * s) + 'px');
-  document.documentElement.style.setProperty('--size-today', Math.round(BASE.today * s) + 'px');
+function nthDay(year,month,weekday,n){
+  const first=new Date(year,month,1).getDay();
+  const day=1+((7+weekday-first)%7)+(n-1)*7;
+  return new Date(year,month,day);
 }
 
-/* ===============================
-   Color cycling for themes
-   =============================== */
-let colorIndex = 0;
-let colorTimer = null;
+function lastWeekday(year,month,weekday){
+  const last=new Date(year,month+1,0).getDay();
+  const day=new Date(year,month+1,0).getDate()-((7+last-weekday)%7);
+  return new Date(year,month,day);
+}
+
+function holidayDate(h,y){
+  if(h.d==="easter") return easterDate(y);
+  if(h.d==="fourthThursday") return nthDay(y,10,4,4);
+  if(h.d==="firstMonday") return nthDay(y,8,1,1);
+  if(h.d==="lastMonday") return lastWeekday(y,4,1);
+  return new Date(y,h.m-1,h.d);
+}
+
+function getActiveHoliday(){
+  const now=Date.now();
+  const y=(new Date()).getFullYear();
+  for(const h of HOLIDAYS){
+    let dt=holidayDate(h,y);
+    if(dt.getTime()+86400000 < now) dt = holidayDate(h,y+1);
+    const start=dt.getTime()-PRE_WINDOW;
+    const end=dt.getTime()+86400000;
+    if(now>=start && now<=end) return {active:true,key:h.key,name:h.name,date:dt};
+  }
+  return {active:false};
+}
+
+/* ============================
+   Color cycling
+============================ */
+let colorIndex=0;
+let colorTimer=null;
+const COLOR_MS=3000;
 
 function applyThemeColors(key){
-  if(!key || !THEME[key]) {
-    document.documentElement.style.setProperty('--bg','#000000');
-    document.documentElement.style.setProperty('--fg','#FFFFFF');
+  if(!key || !THEME[key]){
+    document.documentElement.style.setProperty('--bg','#000');
+    document.documentElement.style.setProperty('--fg','#fff');
     return;
   }
-  const pal = THEME[key];
-  const i = colorIndex % pal.backgrounds.length;
-  document.documentElement.style.setProperty('--bg', pal.backgrounds[i]);
-  document.documentElement.style.setProperty('--fg', pal.texts[i]);
+  const T=THEME[key];
+  const i=colorIndex % T.backgrounds.length;
+  document.documentElement.style.setProperty('--bg',T.backgrounds[i]);
+  document.documentElement.style.setProperty('--fg',T.texts[i]);
   colorIndex++;
 }
 
 function startColorCycle(key){
-  if(colorTimer) { clearInterval(colorTimer); colorTimer = null; }
-  if(!key) { applyThemeColors(null); return; }
-  colorIndex = 0;
+  if(colorTimer) clearInterval(colorTimer);
+  if(!key){ applyThemeColors(null); return;}
+  colorIndex=0;
   applyThemeColors(key);
-  colorTimer = setInterval(()=> applyThemeColors(key), COLOR_CYCLE_MS);
+  colorTimer=setInterval(()=>applyThemeColors(key),COLOR_MS);
 }
 
-/* ===============================
-   Clock and DOM
-   =============================== */
-const elDate = document.getElementById('date');
-const elTime = document.getElementById('time');
-const elCount = document.getElementById('countdown');
-const elToday = document.getElementById('today');
+/* ============================
+   Clock + Countdown
+============================ */
+function updateClock(){
+  const now=new Date();
+  document.getElementById('date').textContent =
+    now.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
+  document.getElementById('time').textContent =
+    now.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}).replace(/ ?[AP]M?/i,"");
 
-function updateClockAndCountdown(){
-  const now = new Date();
-  elDate.textContent = now.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
-  const raw = now.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" });
-  elTime.textContent = raw.replace(/ ?[AP]M?/i, "");
+  const a=getActiveHoliday();
+  const elC=document.getElementById('countdown');
+  const elT=document.getElementById('today');
 
-  const active = getActiveHoliday();
-  if(active.active){
-    const days = Math.floor((active.date.getTime() - now.getTime()) / (1000*60*60*24));
-    if(days <= 0){
-      elToday.textContent = "Happy " + active.name + "!";
-      elCount.textContent = "";
+  if(a.active){
+    const days=Math.floor((a.date-now)/86400000);
+    if(days<=0){
+      elT.textContent="Happy " + a.name + "!";
+      elC.textContent="";
     } else {
-      elToday.textContent = "";
-      elCount.textContent = `${days} day${days !== 1 ? 's' : ''} until ${active.name}`;
+      elT.textContent="";
+      elC.textContent=days+" day"+(days!=1?"s":"")+" until "+a.name;
     }
   } else {
-    elToday.textContent = "";
-    elCount.textContent = "";
+    elT.textContent="";
+    elC.textContent="";
   }
 }
 
-/* ===============================
-   Runner (random) logic
-   =============================== */
-let runnerTimeout = null;
-let prevActiveKey = null;
+/* ============================
+   Runners
+============================ */
+const RUN_ASSETS=["-run.webp","-run.gif","-sprite.png"];
+const RUNNERS={
+  thanksgiving:["turkey"],
+  christmas:["santa"],
+  valentine:["cupid"],
+  stpatricks:["leprechaun"],
+  easter:["bunny"],
+  halloween:["pumpkin"],
+  independence:["rocket"],
+  memorial:["flag"]
+};
 
-function randomBetween(min, max) { return Math.floor(Math.random()*(max-min))+min; }
-
-function pickRunnerForHoliday(key){
-  const arr = RUNNERS_BY_HOLIDAY[key] || [];
-  if(arr.length === 0){
-    const pool = ["turkey","santa","bunny","pumpkin","rocket","cupid","leprechaun"];
-    return pool[Math.floor(Math.random()*pool.length)];
+function pickRunner(key){
+  const list=RUNNERS[key];
+  if(!list||!list.length){
+    return null;
   }
-  return arr[Math.floor(Math.random()*arr.length)];
+  return list[Math.floor(Math.random()*list.length)];
 }
 
-function tryRunnerAsset(name){
-  return new Promise((resolve) => {
-    const tryList = RUNNER_EXT_ORDER.map(ext => `assets/${name}${ext}`);
-    let i = 0;
-    (function next(){
-      if(i >= tryList.length) return resolve(null);
-      const url = tryList[i];
-      if(url.endsWith('.webp') || url.endsWith('.gif')){
-        const img = new Image();
-        img.src = url;
-        img.onload = ()=> resolve({url, type:'img'});
-        img.onerror = ()=> { i++; next(); };
-      } else if(url.endsWith('.png') && url.includes('-sprite')) {
-        const img = new Image();
-        img.src = url;
-        img.onload = ()=> resolve({url, type:'sprite', frames:6});
-        img.onerror = ()=> { i++; next(); };
-      } else {
-        i++; next();
-      }
-    })();
-  });
+async function loadRunnerAsset(name){
+  for(const suffix of RUN_ASSETS){
+    const url="assets/"+name+suffix;
+    const img=new Image();
+    img.src=url;
+    try{
+      await img.decode();
+      return {url, sprite: suffix.includes("sprite")};
+    }catch{}
+  }
+  return null;
 }
 
-async function spawnRunner(holidayKey){
-  if(!holidayKey) return;
-  // skip sometimes to keep it light
-  if(Math.random() < 0.45) return scheduleNextRunner();
+async function spawnRunner(key){
+  if(!key) return;
+  const name=pickRunner(key);
+  if(!name) return;
 
-  const runnerKey = pickRunnerForHoliday(holidayKey);
-  let asset = await tryRunnerAsset(runnerKey + '-run'); // tries -run.webpp/gif first
-  if(!asset) asset = await tryRunnerAsset(runnerKey + '-sprite'); // tries sprite
-  if(!asset) return scheduleNextRunner();
+  const asset=await loadRunnerAsset(name);
+  if(!asset) return;
 
-  const el = document.createElement('div');
-  el.className = 'runner';
-  const vw = Math.max(document.documentElement.clientWidth, window.innerWidth || 480);
-  const widthPx = Math.max(60, Math.min(240, Math.round(vw * 0.18)));
-  el.style.width = widthPx + 'px';
-  const duration = Math.max(4, Math.round(RUN_DURATION_BASE_SEC * (vw / 480)));
+  const el=document.createElement('div');
+  el.className='runner';
+  el.style.animation=`runAcross 7s linear`;
 
-  if(asset.type === 'img'){
-    const img = new Image();
-    img.src = asset.url; img.style.width='100%'; img.style.height='auto';
+  if(asset.sprite){
+    const div=document.createElement('div');
+    div.className='sprite-run';
+    div.style.backgroundImage=`url('${asset.url}')`;
+    div.style.backgroundSize='600% 100%';
+    div.style.animation=`spriteAnim 0.8s steps(6) infinite`;
+    el.appendChild(div);
+  } else {
+    const img=new Image();
+    img.src=asset.url;
+    img.style.width="100%";
     el.appendChild(img);
-  } else if(asset.type === 'sprite'){
-    const sprite = document.createElement('div');
-    sprite.className = 'sprite-run';
-    sprite.style.backgroundImage = `url("${asset.url}")`;
-    sprite.style.backgroundSize = (100 * (asset.frames || 6)) + '% 100%';
-    // steps animation for frames
-    const stepName = `spriteStep_${Date.now()}_${Math.floor(Math.random()*1000)}`;
-    const styleTag = document.createElement('style');
-    styleTag.textContent = `@keyframes ${stepName} { 100% { background-position: -${100 * ((asset.frames||6)-1)}% 0; } }`;
-    document.head.appendChild(styleTag);
-    sprite.style.animation = `${stepName} 0.8s steps(${asset.frames||6}) infinite`;
-    el.appendChild(sprite);
   }
 
   document.body.appendChild(el);
-  el.style.animation = `runAcross ${duration}s linear`;
-  el.addEventListener('animationend', ()=> el.remove());
-  // subtle bob
-  el.animate([{transform:'translateY(0)'},{transform:'translateY(-6px)'},{transform:'translateY(0)'}],{duration:900, iterations:Infinity});
-
-  scheduleNextRunner();
+  el.addEventListener('animationend',()=>el.remove());
 }
 
-function scheduleNextRunner(){
-  if(runnerTimeout) clearTimeout(runnerTimeout);
-  const active = getActiveHoliday();
-  if(!active.active){ runnerTimeout = null; return; }
-  const ms = randomBetween(RUNNER_MIN_MS, RUNNER_MAX_MS);
-  runnerTimeout = setTimeout(()=> spawnRunner(active.key), ms);
-}
+setInterval(()=>{
+  const a=getActiveHoliday();
+  if(a.active && Math.random()<0.3) spawnRunner(a.key);
+}, 15000);
 
-/* ===============================
-   Daily + hourly refresh (to ensure day rollover)
-   =============================== */
-function scheduleDailyReloadAt(hour = 0, minute = 5) {
-  const now = new Date();
-  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, hour, minute, 0, 0);
-  const ms = next.getTime() - now.getTime();
-  setTimeout(() => {
-    try { location.reload(); } catch(e){ /* ignore */ }
-    // schedule next day
-    scheduleDailyReloadAt(hour, minute);
-  }, ms + 200);
+/* ============================
+   Daily + Hourly Refresh
+============================ */
+function scheduleDaily(){
+  const now=new Date();
+  const next=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,0,5,0);
+  setTimeout(()=>{ location.reload(); scheduleDaily(); }, next-now);
 }
+scheduleDaily();
 
-/* Hourly fallback reload */
-function scheduleHourlyReload() {
-  setInterval(() => {
-    try { location.reload(); } catch(e){ /* ignore */ }
-  }, 60*60*1000); // every hour
-}
+setInterval(()=>location.reload(),3600000);
 
-/* ===============================
-   Startup & main loop
-   =============================== */
+/* ============================
+   Initialization
+============================ */
 applyScale();
-updateClockAndCountdown();
-let colorTimerRef = null;
+updateClock();
 
-// initial color cycle and schedule
-(function init(){
-  const active = getActiveHoliday();
-  if(active.active){
-    colorIndex = 0;
-    startColorCycle(active.key);
-    scheduleNextRunner();
-  } else {
-    startColorCycle(null);
-  }
+window.addEventListener('resize',()=>setTimeout(applyScale,80));
+setInterval(updateClock,1000);
 
-  // Regular tick: update clock and check holiday state
-  setInterval(() => {
-    updateClockAndCountdown();
-
-    // Check holiday state and start/stop theme & runners accordingly
-    const activeNow = getActiveHoliday();
-    if(activeNow.active){
-      if(prevActiveKey !== activeNow.key){
-        prevActiveKey = activeNow.key;
-        colorIndex = 0;
-        startColorCycle(activeNow.key);
-        scheduleNextRunner();
-      }
-    } else {
-      if(prevActiveKey !== null){
-        prevActiveKey = null;
-        startColorCycle(null);
-        if(runnerTimeout) { clearTimeout(runnerTimeout); runnerTimeout = null; }
-      }
-    }
-  }, 3000); // check every 3s for holiday changes (fast enough)
-
-  // Clock updates per second for time + countdown freshness
-  setInterval(() => updateClockAndCountdown(), 1000);
-
-  // Autoscale on start and when window changes
-  window.addEventListener('resize', () => setTimeout(applyScale, 80));
-  window.addEventListener('orientationchange', () => setTimeout(applyScale, 200));
-  setTimeout(applyScale, 300);
-
-  // schedule reloads (both daily and hourly)
-  scheduleDailyReloadAt(0,5); // 12:05 AM daily
-  scheduleHourlyReload();     // hourly fallback
+(function() {
+  const a=getActiveHoliday();
+  startColorCycle(a.active ? a.key : null);
 })();
 
-/* expose helpers for interactive debug (optional) */
-window.__holidayClock = {
-  getActiveHoliday,
-  spawnRunnerNow: () => { const a = getActiveHoliday(); if(a.active) spawnRunner(a.key); },
-  applyScale
-};
+/* ============================
+   Manual Runner Trigger -- tap the countdown
+============================ */
+document.getElementById("countdown").addEventListener("click", () => {
+  const a = getActiveHoliday();
+  if (a.active) spawnRunner(a.key);
+});
 </script>
 </body>
 </html>
