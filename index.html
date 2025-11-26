@@ -59,6 +59,17 @@
     pointer-events:none;
   }
 
+  /* Make countdown and today clickable for testing */
+  #countdown, #today {
+    pointer-events: auto;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  #countdown:active, #today:active {
+    opacity: 0.7;
+  }
+
   #date, #countdown, #today {
     white-space: nowrap;
     overflow: hidden;
@@ -73,7 +84,7 @@
   /* Runner (character) styles */
   .runner {
     position: absolute;
-    bottom: 6%;
+    bottom: 15%;
     left: -30%;
     width: 18vmin;
     height: auto;
@@ -83,9 +94,12 @@
     will-change: transform, left;
     filter: drop-shadow(0 6px 8px rgba(0,0,0,0.45));
   }
-  .sprite-run { background-repeat:no-repeat; background-size:cover; width:100%; height:100%; display:block; }
 
-  @keyframes runAcross { 0% { transform: translateX(-120%); } 100% { transform: translateX(220%); } }
+  @keyframes runAcross { 
+    0% { left: -30%; } 
+    100% { left: 130%; } 
+  }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 
   /* small pulse */
   .festive { animation: pulseColor 2.6s ease-in-out infinite; }
@@ -136,7 +150,7 @@ const HOLIDAYS = [
   { key:"christmas", name:"Christmas", m:12, d:25 }
 ];
 
-/* Theme palettes (TFT-safe) */
+/* Theme palettes - IMPROVED for cheap TFT screens with higher saturation */
 const THEME = {
   newyears:    { backgrounds:["#1A0033","#330066","#00111a"], texts:["#FFD700","#E8D6FF","#FFFFFF"] },
   valentine:   { backgrounds:["#E63963","#FF8AAE","#FFC2D4"], texts:["#FFFFFF","#FFE6EE","#FFF5FA"] },
@@ -146,26 +160,10 @@ const THEME = {
   independence:{ backgrounds:["#0A1A59","#8B0000","#001133"], texts:["#FFFFFF","#FFCCCC","#DDE7FF"] },
   labor:       { backgrounds:["#332E2E","#5A4B3A","#8A6E4C"], texts:["#FFFFFF","#FFEFD7","#FFF3E6"] },
   halloween:   { backgrounds:["#FF7A00","#CC5500","#FFA531"], texts:["#1A1A1A","#332222","#2A1200"] },
-  thanksgiving:{ backgrounds:["#A66124","#C97A2C","#E89A4F"], texts:["#FFF7E6","#FFEFD7","#FFF1C9"] },
+  // FIXED: Much more saturated Thanksgiving colors for cheap screens
+  thanksgiving:{ backgrounds:["#D2691E","#FF8C00","#CD853F"], texts:["#FFFF00","#FFFFFF","#FFF8DC"] },
   christmas:   { backgrounds:["#8B0000","#0F4D1A","#004C3F"], texts:["#FFFFFF","#FFE8A3","#FFFAF2"] }
 };
-
-/* Runner mapping */
-const RUNNERS_BY_HOLIDAY = {
-  thanksgiving: ["turkey"],
-  christmas: ["santa"],
-  newyears: ["rocket","party"],
-  valentine: ["cupid"],
-  stpatricks: ["leprechaun"],
-  easter: ["bunny"],
-  halloween: ["pumpkin"],
-  independence: ["rocket"],
-  labor: ["worker"],
-  memorial: ["flag"]
-};
-
-/* Runner file suffix order */
-const RUNNER_EXT_ORDER = ["-run.webp","-run.gif","-sprite.png"];
 
 /* ===============================
    Utilities: dates and movable holidays
@@ -278,6 +276,31 @@ const elTime = document.getElementById('time');
 const elCount = document.getElementById('countdown');
 const elToday = document.getElementById('today');
 
+// Add click handlers for testing runners
+elCount.addEventListener('click', () => {
+  console.log('Countdown clicked!');
+  const active = getActiveHoliday();
+  console.log('Active holiday:', active);
+  if(active.active) {
+    console.log('Spawning runner for:', active.key);
+    spawnRunner(active.key, true); // true = force spawn, no random skip
+  } else {
+    console.log('No active holiday');
+  }
+});
+
+elToday.addEventListener('click', () => {
+  console.log('Today clicked!');
+  const active = getActiveHoliday();
+  console.log('Active holiday:', active);
+  if(active.active) {
+    console.log('Spawning runner for:', active.key);
+    spawnRunner(active.key, true); // true = force spawn, no random skip
+  } else {
+    console.log('No active holiday');
+  }
+});
+
 function updateClockAndCountdown(){
   const now = new Date();
   elDate.textContent = now.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
@@ -286,8 +309,18 @@ function updateClockAndCountdown(){
 
   const active = getActiveHoliday();
   if(active.active){
-    const days = Math.floor((active.date.getTime() - now.getTime()) / (1000*60*60*24));
-    if(days <= 0){
+    // FIXED: Improved countdown calculation
+    // Set both dates to midnight for accurate day counting
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const holidayMidnight = new Date(active.date.getFullYear(), active.date.getMonth(), active.date.getDate());
+    const days = Math.round((holidayMidnight.getTime() - todayMidnight.getTime()) / (1000*60*60*24));
+    
+    if(days < 0){
+      // Holiday has passed
+      elToday.textContent = "";
+      elCount.textContent = "";
+    } else if(days === 0){
+      // Today is the holiday!
       elToday.textContent = "Happy " + active.name + "!";
       elCount.textContent = "";
     } else {
@@ -301,55 +334,270 @@ function updateClockAndCountdown(){
 }
 
 /* ===============================
+   SVG Character Generators
+   =============================== */
+
+function createTurkeySVG() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.innerHTML = `
+    <g class="turkey-body">
+      <!-- Tail feathers -->
+      <ellipse cx="30" cy="45" rx="15" ry="25" fill="#D2691E" transform="rotate(-30 30 45)"/>
+      <ellipse cx="35" cy="40" rx="15" ry="25" fill="#CD853F" transform="rotate(-15 35 40)"/>
+      <ellipse cx="42" cy="38" rx="15" ry="25" fill="#8B4513"/>
+      <ellipse cx="50" cy="38" rx="15" ry="25" fill="#D2691E" transform="rotate(15 50 38)"/>
+      <ellipse cx="57" cy="40" rx="15" ry="25" fill="#CD853F" transform="rotate(30 57 40)"/>
+      <!-- Body -->
+      <ellipse cx="45" cy="60" rx="20" ry="25" fill="#8B4513"/>
+      <!-- Head -->
+      <circle cx="48" cy="48" r="12" fill="#D2691E"/>
+      <!-- Beak -->
+      <polygon points="55,48 62,50 55,52" fill="#FFA500"/>
+      <!-- Eye -->
+      <circle cx="52" cy="46" r="2" fill="#000"/>
+      <!-- Wattle -->
+      <ellipse cx="52" cy="55" rx="3" ry="5" fill="#DC143C"/>
+    </g>
+  `;
+  return svg;
+}
+
+function createSantaSVG() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.innerHTML = `
+    <g class="santa">
+      <!-- Body -->
+      <ellipse cx="50" cy="70" rx="18" ry="22" fill="#DC143C"/>
+      <!-- Arms -->
+      <ellipse cx="35" cy="65" rx="8" ry="18" fill="#DC143C" transform="rotate(-20 35 65)"/>
+      <ellipse cx="65" cy="65" rx="8" ry="18" fill="#DC143C" transform="rotate(20 65 65)"/>
+      <!-- Head -->
+      <circle cx="50" cy="45" r="15" fill="#FFE4C4"/>
+      <!-- Hat -->
+      <path d="M 35 40 Q 50 25 65 40 L 62 45 L 38 45 Z" fill="#DC143C"/>
+      <ellipse cx="50" cy="27" rx="5" ry="5" fill="#FFF"/>
+      <rect x="35" y="40" width="30" height="5" fill="#FFF"/>
+      <!-- Beard -->
+      <ellipse cx="50" cy="52" rx="12" ry="10" fill="#FFF"/>
+      <!-- Eyes -->
+      <circle cx="45" cy="43" r="2" fill="#000"/>
+      <circle cx="55" cy="43" r="2" fill="#000"/>
+      <!-- Belt -->
+      <rect x="35" y="68" width="30" height="4" fill="#000"/>
+      <rect x="48" y="66" width="4" height="8" fill="#FFD700"/>
+    </g>
+  `;
+  return svg;
+}
+
+function createPumpkinSVG() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.innerHTML = `
+    <g class="pumpkin">
+      <!-- Body segments -->
+      <ellipse cx="50" cy="60" rx="28" ry="32" fill="#FF7518"/>
+      <ellipse cx="38" cy="60" rx="12" ry="30" fill="#FF8C00"/>
+      <ellipse cx="62" cy="60" rx="12" ry="30" fill="#FF8C00"/>
+      <!-- Stem -->
+      <rect x="47" y="30" width="6" height="12" fill="#228B22" rx="2"/>
+      <!-- Eyes -->
+      <polygon points="38,52 42,52 44,58 36,58" fill="#000"/>
+      <polygon points="56,52 60,52 64,58 56,58" fill="#000"/>
+      <!-- Nose -->
+      <polygon points="48,62 50,68 52,62" fill="#000"/>
+      <!-- Mouth -->
+      <path d="M 35 72 Q 40 78 45 76 Q 50 74 55 76 Q 60 78 65 72" fill="none" stroke="#000" stroke-width="3"/>
+      <rect x="36" y="72" width="4" height="6" fill="#000"/>
+      <rect x="44" y="74" width="4" height="6" fill="#000"/>
+      <rect x="52" y="74" width="4" height="6" fill="#000"/>
+      <rect x="60" y="72" width="4" height="6" fill="#000"/>
+    </g>
+  `;
+  return svg;
+}
+
+function createBunnySVG() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.innerHTML = `
+    <g class="bunny">
+      <!-- Ears -->
+      <ellipse cx="40" cy="35" rx="8" ry="22" fill="#FFF" transform="rotate(-15 40 35)"/>
+      <ellipse cx="40" cy="35" rx="4" ry="18" fill="#FFB6C1" transform="rotate(-15 40 35)"/>
+      <ellipse cx="60" cy="35" rx="8" ry="22" fill="#FFF" transform="rotate(15 60 35)"/>
+      <ellipse cx="60" cy="35" rx="4" ry="18" fill="#FFB6C1" transform="rotate(15 60 35)"/>
+      <!-- Head -->
+      <circle cx="50" cy="55" r="18" fill="#FFF"/>
+      <!-- Eyes -->
+      <circle cx="44" cy="52" r="3" fill="#000"/>
+      <circle cx="56" cy="52" r="3" fill="#000"/>
+      <!-- Nose -->
+      <circle cx="50" cy="58" r="2" fill="#FFB6C1"/>
+      <!-- Mouth -->
+      <path d="M 50 58 L 48 62" stroke="#000" stroke-width="1.5" fill="none"/>
+      <path d="M 50 58 L 52 62" stroke="#000" stroke-width="1.5" fill="none"/>
+      <!-- Body -->
+      <ellipse cx="50" cy="78" rx="15" ry="18" fill="#FFF"/>
+      <!-- Feet -->
+      <ellipse cx="42" cy="92" rx="8" ry="5" fill="#FFF"/>
+      <ellipse cx="58" cy="92" rx="8" ry="5" fill="#FFF"/>
+    </g>
+  `;
+  return svg;
+}
+
+function createCupidSVG() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.innerHTML = `
+    <g class="cupid">
+      <!-- Wings -->
+      <path d="M 30 50 Q 20 40 25 35 Q 30 30 35 40 Z" fill="#FFE4E1"/>
+      <path d="M 70 50 Q 80 40 75 35 Q 70 30 65 40 Z" fill="#FFE4E1"/>
+      <!-- Body -->
+      <ellipse cx="50" cy="65" rx="12" ry="18" fill="#FFE4C4"/>
+      <!-- Head -->
+      <circle cx="50" cy="45" r="12" fill="#FFE4C4"/>
+      <!-- Eyes -->
+      <circle cx="46" cy="43" r="2" fill="#000"/>
+      <circle cx="54" cy="43" r="2" fill="#000"/>
+      <!-- Bow -->
+      <line x1="35" y1="50" x2="45" y2="55" stroke="#8B4513" stroke-width="2"/>
+      <path d="M 45 55 L 70 48" stroke="#F5DEB3" stroke-width="1"/>
+      <!-- Arrow -->
+      <line x1="65" y1="45" x2="80" y2="40" stroke="#8B4513" stroke-width="2"/>
+      <polygon points="80,40 85,38 83,42" fill="#DC143C"/>
+    </g>
+  `;
+  return svg;
+}
+
+function createRocketSVG() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.innerHTML = `
+    <g class="rocket">
+      <!-- Flames -->
+      <ellipse cx="45" cy="85" rx="6" ry="12" fill="#FF4500" opacity="0.7">
+        <animate attributeName="ry" values="12;16;12" dur="0.3s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="55" cy="85" rx="6" ry="12" fill="#FFA500" opacity="0.7">
+        <animate attributeName="ry" values="14;10;14" dur="0.3s" repeatCount="indefinite"/>
+      </ellipse>
+      <!-- Body -->
+      <rect x="42" y="40" width="16" height="40" fill="#DC143C" rx="2"/>
+      <!-- Nose cone -->
+      <polygon points="50,20 42,40 58,40" fill="#FFD700"/>
+      <!-- Window -->
+      <circle cx="50" cy="50" r="6" fill="#87CEEB"/>
+      <!-- Fins -->
+      <polygon points="42,70 35,85 42,80" fill="#1E90FF"/>
+      <polygon points="58,70 65,85 58,80" fill="#1E90FF"/>
+      <!-- Details -->
+      <rect x="44" y="65" width="12" height="2" fill="#FFD700"/>
+      <rect x="44" y="70" width="12" height="2" fill="#FFD700"/>
+    </g>
+  `;
+  return svg;
+}
+
+function createLeprechaunSVG() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.innerHTML = `
+    <g class="leprechaun">
+      <!-- Hat -->
+      <rect x="38" y="30" width="24" height="8" fill="#228B22"/>
+      <path d="M 35 38 L 40 25 L 60 25 L 65 38 Z" fill="#228B22"/>
+      <rect x="38" y="37" width="24" height="3" fill="#000"/>
+      <rect x="46" y="35" width="8" height="4" fill="#FFD700"/>
+      <!-- Head -->
+      <circle cx="50" cy="50" r="14" fill="#FFE4C4"/>
+      <!-- Beard -->
+      <path d="M 38 50 Q 42 62 50 60 Q 58 62 62 50" fill="#FF6347"/>
+      <!-- Eyes -->
+      <circle cx="44" cy="48" r="2" fill="#000"/>
+      <circle cx="56" cy="48" r="2" fill="#000"/>
+      <!-- Body -->
+      <rect x="40" y="62" width="20" height="24" fill="#228B22" rx="3"/>
+      <!-- Belt -->
+      <rect x="38" y="72" width="24" height="4" fill="#000"/>
+      <rect x="48" y="70" width="4" height="8" fill="#FFD700"/>
+      <!-- Legs -->
+      <rect x="42" y="85" width="6" height="10" fill="#000"/>
+      <rect x="52" y="85" width="6" height="10" fill="#000"/>
+    </g>
+  `;
+  return svg;
+}
+
+const CHARACTER_CREATORS = {
+  turkey: createTurkeySVG,
+  santa: createSantaSVG,
+  pumpkin: createPumpkinSVG,
+  bunny: createBunnySVG,
+  cupid: createCupidSVG,
+  rocket: createRocketSVG,
+  leprechaun: createLeprechaunSVG
+};
+
+/* ===============================
    Runner (random) logic
    =============================== */
 let runnerTimeout = null;
 let prevActiveKey = null;
 
+const RUNNERS_BY_HOLIDAY = {
+  thanksgiving: ["turkey"],
+  christmas: ["santa"],
+  newyears: ["rocket"],
+  valentine: ["cupid"],
+  stpatricks: ["leprechaun"],
+  easter: ["bunny"],
+  halloween: ["pumpkin"],
+  independence: ["rocket"],
+  labor: ["turkey"],
+  memorial: ["rocket"]
+};
+
 function randomBetween(min, max) { return Math.floor(Math.random()*(max-min))+min; }
 
 function pickRunnerForHoliday(key){
   const arr = RUNNERS_BY_HOLIDAY[key] || [];
-  if(arr.length === 0){
-    const pool = ["turkey","santa","bunny","pumpkin","rocket","cupid","leprechaun"];
-    return pool[Math.floor(Math.random()*pool.length)];
-  }
+  if(arr.length === 0) return "turkey";
   return arr[Math.floor(Math.random()*arr.length)];
 }
 
-function tryRunnerAsset(name){
-  return new Promise((resolve) => {
-    const tryList = RUNNER_EXT_ORDER.map(ext => `assets/${name}${ext}`);
-    let i = 0;
-    (function next(){
-      if(i >= tryList.length) return resolve(null);
-      const url = tryList[i];
-      if(url.endsWith('.webp') || url.endsWith('.gif')){
-        const img = new Image();
-        img.src = url;
-        img.onload = ()=> resolve({url, type:'img'});
-        img.onerror = ()=> { i++; next(); };
-      } else if(url.endsWith('.png') && url.includes('-sprite')) {
-        const img = new Image();
-        img.src = url;
-        img.onload = ()=> resolve({url, type:'sprite', frames:6});
-        img.onerror = ()=> { i++; next(); };
-      } else {
-        i++; next();
-      }
-    })();
-  });
-}
-
-async function spawnRunner(holidayKey){
+async function spawnRunner(holidayKey, forceSpawn = false){
+  console.log('spawnRunner called with:', holidayKey, 'forceSpawn:', forceSpawn);
   if(!holidayKey) return;
-  // skip sometimes to keep it light
-  if(Math.random() < 0.45) return scheduleNextRunner();
+  // skip sometimes to keep it light (but not when forced via click)
+  if(!forceSpawn && Math.random() < 0.45) return scheduleNextRunner();
 
   const runnerKey = pickRunnerForHoliday(holidayKey);
-  let asset = await tryRunnerAsset(runnerKey + '-run'); // tries -run.webpp/gif first
-  if(!asset) asset = await tryRunnerAsset(runnerKey + '-sprite'); // tries sprite
-  if(!asset) return scheduleNextRunner();
+  console.log('Selected runner:', runnerKey);
+  const creator = CHARACTER_CREATORS[runnerKey];
+  if(!creator) {
+    console.log('No creator found for:', runnerKey);
+    return scheduleNextRunner();
+  }
 
   const el = document.createElement('div');
   el.className = 'runner';
@@ -358,31 +606,19 @@ async function spawnRunner(holidayKey){
   el.style.width = widthPx + 'px';
   const duration = Math.max(4, Math.round(RUN_DURATION_BASE_SEC * (vw / 480)));
 
-  if(asset.type === 'img'){
-    const img = new Image();
-    img.src = asset.url; img.style.width='100%'; img.style.height='auto';
-    el.appendChild(img);
-  } else if(asset.type === 'sprite'){
-    const sprite = document.createElement('div');
-    sprite.className = 'sprite-run';
-    sprite.style.backgroundImage = `url("${asset.url}")`;
-    sprite.style.backgroundSize = (100 * (asset.frames || 6)) + '% 100%';
-    // steps animation for frames
-    const stepName = `spriteStep_${Date.now()}_${Math.floor(Math.random()*1000)}`;
-    const styleTag = document.createElement('style');
-    styleTag.textContent = `@keyframes ${stepName} { 100% { background-position: -${100 * ((asset.frames||6)-1)}% 0; } }`;
-    document.head.appendChild(styleTag);
-    sprite.style.animation = `${stepName} 0.8s steps(${asset.frames||6}) infinite`;
-    el.appendChild(sprite);
-  }
+  console.log('Creating SVG...');
+  const svg = creator();
+  el.appendChild(svg);
 
+  console.log('Adding runner to body, width:', widthPx, 'duration:', duration);
   document.body.appendChild(el);
-  el.style.animation = `runAcross ${duration}s linear`;
-  el.addEventListener('animationend', ()=> el.remove());
-  // subtle bob
-  el.animate([{transform:'translateY(0)'},{transform:'translateY(-6px)'},{transform:'translateY(0)'}],{duration:900, iterations:Infinity});
+  el.style.animation = `runAcross ${duration}s linear, bob 0.6s ease-in-out infinite`;
+  el.addEventListener('animationend', ()=> {
+    console.log('Runner animation ended, removing');
+    el.remove();
+  });
 
-  scheduleNextRunner();
+  if(!forceSpawn) scheduleNextRunner(); // don't schedule next when manually triggered
 }
 
 function scheduleNextRunner(){
