@@ -84,15 +84,20 @@
   /* Runner (character) styles */
   .runner {
     position: absolute;
-    bottom: 15%;
+    bottom: 10%;
     left: -30%;
-    width: 18vmin;
-    height: auto;
+    height: 70vh;
+    width: auto;
     z-index:9999;
     pointer-events:none;
     user-select:none;
     will-change: transform, left;
     filter: drop-shadow(0 6px 8px rgba(0,0,0,0.45));
+  }
+  
+  .runner svg {
+    height: 100%;
+    width: auto;
   }
 
   @keyframes runAcross { 
@@ -160,8 +165,8 @@ const THEME = {
   independence:{ backgrounds:["#0A1A59","#8B0000","#001133"], texts:["#FFFFFF","#FFCCCC","#DDE7FF"] },
   labor:       { backgrounds:["#332E2E","#5A4B3A","#8A6E4C"], texts:["#FFFFFF","#FFEFD7","#FFF3E6"] },
   halloween:   { backgrounds:["#FF7A00","#CC5500","#FFA531"], texts:["#1A1A1A","#332222","#2A1200"] },
-  // FIXED: Much more saturated Thanksgiving colors for cheap screens
-  thanksgiving:{ backgrounds:["#D2691E","#FF8C00","#CD853F"], texts:["#FFFF00","#FFFFFF","#FFF8DC"] },
+  // FIXED: Much more saturated Thanksgiving colors for cheap screens - removed washed out color
+  thanksgiving:{ backgrounds:["#D2691E","#FF8C00"], texts:["#FFFF00","#FFFFFF"] },
   christmas:   { backgrounds:["#8B0000","#0F4D1A","#004C3F"], texts:["#FFFFFF","#FFE8A3","#FFFAF2"] }
 };
 
@@ -602,17 +607,16 @@ async function spawnRunner(holidayKey, forceSpawn = false){
   const el = document.createElement('div');
   el.className = 'runner';
   const vw = Math.max(document.documentElement.clientWidth, window.innerWidth || 480);
-  const widthPx = Math.max(60, Math.min(240, Math.round(vw * 0.18)));
-  el.style.width = widthPx + 'px';
   const duration = Math.max(4, Math.round(RUN_DURATION_BASE_SEC * (vw / 480)));
 
   console.log('Creating SVG...');
   const svg = creator();
   el.appendChild(svg);
 
-  console.log('Adding runner to body, width:', widthPx, 'duration:', duration);
+  console.log('Adding runner to body, duration:', duration);
   document.body.appendChild(el);
   el.style.animation = `runAcross ${duration}s linear, bob 0.6s ease-in-out infinite`;
+  
   el.addEventListener('animationend', ()=> {
     console.log('Runner animation ended, removing');
     el.remove();
