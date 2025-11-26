@@ -1,5 +1,5 @@
-![License](https://img.shields.io/github/license/bchilton9/holiday-clock)
-![Last Commit](https://img.shields.io/github/last-commit/bchilton9/holiday-clock)
+![License](https://img.shields.io/github/license/bchilton9/Holiday-Clock)
+![Last Commit](https://img.shields.io/github/last-commit/bchilton9/Holiday-Clock)
 ![HTML5](https://img.shields.io/badge/Made%20with-HTML5-e34f26?logo=html5&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-f7df1e?logo=javascript&logoColor=black)
 
@@ -44,7 +44,10 @@ ___
 4. **Optional:** Set your Pi to auto-launch the page on boot
 
 ### Local Testing
-Simply open `index.html` in any modern browser. No server required!
+Simply open `index.html` in any modern browser. No server required
+
+### Demo
+[https://clock.chilsoft.com](https://clock.chilsoft.com)
 
 ___
 
