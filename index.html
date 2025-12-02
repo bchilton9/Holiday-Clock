@@ -136,14 +136,10 @@ const REF_W = 480, REF_H = 320;
 const BASE = { date:40, time:200, count:38, today:44 };
 
 const PRE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000; // 2 weeks
-const COLOR_CYCLE_MS = 3000;
-const RUNNER_MIN_MS = 15000;
-const RUNNER_MAX_MS = 90000;
-const RUN_DURATION_BASE_SEC = 6;
 
-/* Holidays config */
+/* Holidays config - with special theme windows for Christmas and New Year's */
 const HOLIDAYS = [
-  { key:"newyears", name:"New Year's", m:1, d:1 },
+  { key:"newyears", name:"New Year's", m:1, d:1, themeStart: "12-26" },
   { key:"valentine", name:"Valentine's Day", m:2, d:14 },
   { key:"stpatricks", name:"St. Patrick's Day", m:3, d:17 },
   { key:"easter", name:"Easter", m:null, d:"easter" },
@@ -152,8 +148,13 @@ const HOLIDAYS = [
   { key:"labor", name:"Labor Day", m:9, d:"firstMonday" },
   { key:"halloween", name:"Halloween", m:10, d:31 },
   { key:"thanksgiving", name:"Thanksgiving", m:11, d:"fourthThursday" },
-  { key:"christmas", name:"Christmas", m:12, d:25 }
+  { key:"christmas", name:"Christmas", m:12, d:25, themeStart: "12-01" }
 ];
+
+const COLOR_CYCLE_MS = 3000;
+const RUNNER_MIN_MS = 15000;
+const RUNNER_MAX_MS = 90000;
+const RUN_DURATION_BASE_SEC = 6;
 
 /* Theme palettes - IMPROVED for cheap TFT screens with higher saturation */
 const THEME = {
@@ -165,7 +166,6 @@ const THEME = {
   independence:{ backgrounds:["#0A1A59","#8B0000","#001133"], texts:["#FFFFFF","#FFCCCC","#DDE7FF"] },
   labor:       { backgrounds:["#332E2E","#5A4B3A","#8A6E4C"], texts:["#FFFFFF","#FFEFD7","#FFF3E6"] },
   halloween:   { backgrounds:["#FF7A00","#CC5500","#FFA531"], texts:["#1A1A1A","#332222","#2A1200"] },
-  // FIXED: Much more saturated Thanksgiving colors for cheap screens - removed washed out color
   thanksgiving:{ backgrounds:["#D2691E","#FF8C00"], texts:["#FFFF00","#FFFFFF"] },
   christmas:   { backgrounds:["#8B0000","#0F4D1A","#004C3F"], texts:["#FFFFFF","#FFE8A3","#FFFAF2"] }
 };
@@ -174,7 +174,6 @@ const THEME = {
    Utilities: dates and movable holidays
    =============================== */
 
-/* Easter: Anonymous Gregorian algorithm */
 function easterDate(year){
   const a = year % 19;
   const b = Math.floor(year/100);
@@ -199,6 +198,7 @@ function nthWeekdayOfMonth(year, monthIndex, weekday, n) {
   let day = 1 + ((7 + weekday - firstWeekday) % 7) + (n-1)*7;
   return new Date(year, monthIndex, day);
 }
+
 function lastWeekdayOfMonth(year, monthIndex, weekday) {
   const last = new Date(year, monthIndex+1, 0);
   const lastWeekday = last.getDay();
@@ -215,25 +215,56 @@ function holidayDate(h, year) {
   return null;
 }
 
-/* return active holiday within window, or {active:false} */
 function getActiveHoliday(){
   const now = Date.now();
-  const y = (new Date()).getFullYear();
+  const currentDate = new Date(now);
+  const y = currentDate.getFullYear();
+  
   for(const h of HOLIDAYS){
     let dt = holidayDate(h, y);
     if(!dt) continue;
-    // If date already past and more than a day old, check next year
+    
     if(dt.getTime() + (24*60*60*1000) < now) dt = holidayDate(h, y+1);
-    const start = dt.getTime() - PRE_WINDOW_MS;
+    
+    let themeStartTime;
+    if(h.themeStart){
+      const [month, day] = h.themeStart.split('-').map(Number);
+      const themeYear = (month > dt.getMonth() + 1) ? dt.getFullYear() - 1 : dt.getFullYear();
+      themeStartTime = new Date(themeYear, month - 1, day).getTime();
+    } else {
+      themeStartTime = dt.getTime() - PRE_WINDOW_MS;
+    }
+    
     const end = dt.getTime() + (24*60*60*1000);
-    if(now >= start && now <= end) return { active:true, key:h.key, name:h.name, date:dt };
+    if(now >= themeStartTime && now <= end) {
+      return { active:true, key:h.key, name:h.name, date:dt };
+    }
   }
   return { active:false };
 }
 
-/* ===============================
-   Autoscale logic
-   =============================== */
+function getNextHoliday(){
+  const now = Date.now();
+  const y = (new Date()).getFullYear();
+  let closest = null;
+  let closestDiff = Infinity;
+  
+  for(const h of HOLIDAYS){
+    let dt = holidayDate(h, y);
+    if(!dt) continue;
+    
+    if(dt.getTime() < now) dt = holidayDate(h, y+1);
+    
+    const diff = dt.getTime() - now;
+    if(diff > 0 && diff < closestDiff){
+      closestDiff = diff;
+      closest = { key:h.key, name:h.name, date:dt };
+    }
+  }
+  
+  return closest;
+}
+
 function applyScale(){
   const w = window.innerWidth || document.documentElement.clientWidth;
   const h = window.innerHeight || document.documentElement.clientHeight;
@@ -246,9 +277,6 @@ function applyScale(){
   document.documentElement.style.setProperty('--size-today', Math.round(BASE.today * s) + 'px');
 }
 
-/* ===============================
-   Color cycling for themes
-   =============================== */
 let colorIndex = 0;
 let colorTimer = null;
 
@@ -273,37 +301,19 @@ function startColorCycle(key){
   colorTimer = setInterval(()=> applyThemeColors(key), COLOR_CYCLE_MS);
 }
 
-/* ===============================
-   Clock and DOM
-   =============================== */
 const elDate = document.getElementById('date');
 const elTime = document.getElementById('time');
 const elCount = document.getElementById('countdown');
 const elToday = document.getElementById('today');
 
-// Add click handlers for testing runners
 elCount.addEventListener('click', () => {
-  console.log('Countdown clicked!');
   const active = getActiveHoliday();
-  console.log('Active holiday:', active);
-  if(active.active) {
-    console.log('Spawning runner for:', active.key);
-    spawnRunner(active.key, true); // true = force spawn, no random skip
-  } else {
-    console.log('No active holiday');
-  }
+  if(active.active) spawnRunner(active.key, true);
 });
 
 elToday.addEventListener('click', () => {
-  console.log('Today clicked!');
   const active = getActiveHoliday();
-  console.log('Active holiday:', active);
-  if(active.active) {
-    console.log('Spawning runner for:', active.key);
-    spawnRunner(active.key, true); // true = force spawn, no random skip
-  } else {
-    console.log('No active holiday');
-  }
+  if(active.active) spawnRunner(active.key, true);
 });
 
 function updateClockAndCountdown(){
@@ -312,36 +322,25 @@ function updateClockAndCountdown(){
   const raw = now.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" });
   elTime.textContent = raw.replace(/ ?[AP]M?/i, "");
 
-  const active = getActiveHoliday();
-  if(active.active){
-    // FIXED: Improved countdown calculation
-    // Set both dates to midnight for accurate day counting
+  const next = getNextHoliday();
+  
+  if(next){
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const holidayMidnight = new Date(active.date.getFullYear(), active.date.getMonth(), active.date.getDate());
+    const holidayMidnight = new Date(next.date.getFullYear(), next.date.getMonth(), next.date.getDate());
     const days = Math.round((holidayMidnight.getTime() - todayMidnight.getTime()) / (1000*60*60*24));
     
-    if(days < 0){
-      // Holiday has passed
-      elToday.textContent = "";
-      elCount.textContent = "";
-    } else if(days === 0){
-      // Today is the holiday!
-      elToday.textContent = "Happy " + active.name + "!";
+    if(days === 0){
+      elToday.textContent = "Happy " + next.name + "!";
       elCount.textContent = "";
     } else {
       elToday.textContent = "";
-      elCount.textContent = `${days} day${days !== 1 ? 's' : ''} until ${active.name}`;
+      elCount.textContent = `${days} day${days !== 1 ? 's' : ''} until ${next.name}`;
     }
   } else {
     elToday.textContent = "";
     elCount.textContent = "";
   }
 }
-
-/* ===============================
-   SVG Character Generators
-   =============================== */
-
 function createTurkeySVG() {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 100 100");
@@ -349,21 +348,15 @@ function createTurkeySVG() {
   svg.setAttribute("height", "100%");
   svg.innerHTML = `
     <g class="turkey-body">
-      <!-- Tail feathers -->
       <ellipse cx="30" cy="45" rx="15" ry="25" fill="#D2691E" transform="rotate(-30 30 45)"/>
       <ellipse cx="35" cy="40" rx="15" ry="25" fill="#CD853F" transform="rotate(-15 35 40)"/>
       <ellipse cx="42" cy="38" rx="15" ry="25" fill="#8B4513"/>
       <ellipse cx="50" cy="38" rx="15" ry="25" fill="#D2691E" transform="rotate(15 50 38)"/>
       <ellipse cx="57" cy="40" rx="15" ry="25" fill="#CD853F" transform="rotate(30 57 40)"/>
-      <!-- Body -->
       <ellipse cx="45" cy="60" rx="20" ry="25" fill="#8B4513"/>
-      <!-- Head -->
       <circle cx="48" cy="48" r="12" fill="#D2691E"/>
-      <!-- Beak -->
       <polygon points="55,48 62,50 55,52" fill="#FFA500"/>
-      <!-- Eye -->
       <circle cx="52" cy="46" r="2" fill="#000"/>
-      <!-- Wattle -->
       <ellipse cx="52" cy="55" rx="3" ry="5" fill="#DC143C"/>
     </g>
   `;
@@ -377,29 +370,103 @@ function createSantaSVG() {
   svg.setAttribute("height", "100%");
   svg.innerHTML = `
     <g class="santa">
+      <!-- Boots -->
+      <ellipse cx="38" cy="95" rx="8" ry="4" fill="#000"/>
+      <ellipse cx="62" cy="95" rx="8" ry="4" fill="#000"/>
+      <rect x="32" y="87" width="12" height="9" fill="#000" rx="2"/>
+      <rect x="56" y="87" width="12" height="9" fill="#000" rx="2"/>
+      
+      <!-- Legs -->
+      <rect x="34" y="72" width="10" height="16" fill="#DC143C"/>
+      <rect x="56" y="72" width="10" height="16" fill="#DC143C"/>
+      
       <!-- Body -->
-      <ellipse cx="50" cy="70" rx="18" ry="22" fill="#DC143C"/>
-      <!-- Arms -->
-      <ellipse cx="35" cy="65" rx="8" ry="18" fill="#DC143C" transform="rotate(-20 35 65)"/>
-      <ellipse cx="65" cy="65" rx="8" ry="18" fill="#DC143C" transform="rotate(20 65 65)"/>
-      <!-- Head -->
-      <circle cx="50" cy="45" r="15" fill="#FFE4C4"/>
-      <!-- Hat -->
-      <path d="M 35 40 Q 50 25 65 40 L 62 45 L 38 45 Z" fill="#DC143C"/>
-      <ellipse cx="50" cy="27" rx="5" ry="5" fill="#FFF"/>
-      <rect x="35" y="40" width="30" height="5" fill="#FFF"/>
-      <!-- Beard -->
-      <ellipse cx="50" cy="52" rx="12" ry="10" fill="#FFF"/>
-      <!-- Eyes -->
-      <circle cx="45" cy="43" r="2" fill="#000"/>
-      <circle cx="55" cy="43" r="2" fill="#000"/>
+      <ellipse cx="50" cy="55" rx="22" ry="20" fill="#DC143C"/>
+      
+      <!-- Right arm (waving) -->
+      <ellipse cx="72" cy="42" rx="7" ry="14" fill="#DC143C" transform="rotate(45 72 42)"/>
+      <circle cx="77" cy="34" r="5" fill="#DC143C"/>
+      <ellipse cx="77" cy="32" rx="5" ry="3" fill="#FFF"/>
+      
+      <!-- Left arm (at side) -->
+      <ellipse cx="28" cy="52" rx="7" ry="15" fill="#DC143C" transform="rotate(-15 28 52)"/>
+      <ellipse cx="24" cy="65" rx="6" ry="4" fill="#FFF" transform="rotate(-15 24 65)"/>
+      <ellipse cx="22" cy="70" rx="5" ry="6" fill="#DC143C"/>
+      
       <!-- Belt -->
-      <rect x="35" y="68" width="30" height="4" fill="#000"/>
-      <rect x="48" y="66" width="4" height="8" fill="#FFD700"/>
+      <rect x="30" y="60" width="40" height="7" fill="#000" rx="1"/>
+      <rect x="47" y="58" width="6" height="11" fill="#FFD700" rx="1"/>
+      <rect x="48.5" y="61" width="3" height="5" fill="#000" rx="0.5"/>
+      
+      <!-- White coat trim bottom -->
+      <ellipse cx="50" cy="72" rx="22" ry="4" fill="#FFF"/>
+      
+      <!-- Coat buttons -->
+      <circle cx="50" cy="48" r="2" fill="#FFF"/>
+      <circle cx="50" cy="56" r="2" fill="#FFF"/>
+      
+      <!-- White coat trim top -->
+      <ellipse cx="50" cy="38" rx="22" ry="4" fill="#FFF"/>
+      
+      <!-- Neck -->
+      <rect x="44" y="32" width="12" height="6" fill="#FFDAB9"/>
+      
+      <!-- Head -->
+      <circle cx="50" cy="26" r="13" fill="#FFDAB9"/>
+      
+      <!-- Ears -->
+      <ellipse cx="37" cy="26" rx="3" ry="4" fill="#FFDAB9"/>
+      <ellipse cx="63" cy="26" rx="3" ry="4" fill="#FFDAB9"/>
+      
+      <!-- Full fluffy beard -->
+      <path d="M 38 30 Q 35 38 40 42 Q 45 44 50 43 Q 55 44 60 42 Q 65 38 62 30" fill="#FFF"/>
+      <circle cx="41" cy="34" r="5" fill="#FFF"/>
+      <circle cx="59" cy="34" r="5" fill="#FFF"/>
+      <ellipse cx="50" cy="38" rx="9" ry="6" fill="#FFF"/>
+      <path d="M 40 42 Q 45 45 50 45 Q 55 45 60 42" fill="#FFF"/>
+      
+      <!-- Mustache (big and curly) -->
+      <ellipse cx="42" cy="28" rx="7" ry="5" fill="#FFF"/>
+      <ellipse cx="58" cy="28" rx="7" ry="5" fill="#FFF"/>
+      <circle cx="38" cy="28" r="3" fill="#FFF"/>
+      <circle cx="62" cy="28" r="3" fill="#FFF"/>
+      
+      <!-- Eyes (jolly closed eyes) -->
+      <path d="M 42 22 Q 45 24 48 22" stroke="#000" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M 52 22 Q 55 24 58 22" stroke="#000" stroke-width="2" fill="none" stroke-linecap="round"/>
+      
+      <!-- Eyebrows (thick and jolly) -->
+      <path d="M 40 19 Q 44 18 47 19" stroke="#C0C0C0" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M 53 19 Q 56 18 60 19" stroke="#C0C0C0" stroke-width="2" fill="none" stroke-linecap="round"/>
+      
+      <!-- Nose (round and red) -->
+      <circle cx="50" cy="26" r="3.5" fill="#FF6B6B"/>
+      <ellipse cx="49" cy="25" rx="1.5" ry="2" fill="#FF9999" opacity="0.6"/>
+      
+      <!-- Rosy cheeks -->
+      <circle cx="38" cy="27" r="4" fill="#FFB6C6" opacity="0.7"/>
+      <circle cx="62" cy="27" r="4" fill="#FFB6C6" opacity="0.7"/>
+      
+      <!-- Glasses (optional but classic) -->
+      <circle cx="45" cy="23" r="4" fill="none" stroke="#8B7355" stroke-width="1" opacity="0.6"/>
+      <circle cx="55" cy="23" r="4" fill="none" stroke="#8B7355" stroke-width="1" opacity="0.6"/>
+      <line x1="49" y1="23" x2="51" y2="23" stroke="#8B7355" stroke-width="1" opacity="0.6"/>
+      
+      <!-- Santa hat -->
+      <path d="M 37 16 L 39 8 L 61 8 L 63 16 Z" fill="#DC143C"/>
+      <ellipse cx="50" cy="16" rx="15" ry="3" fill="#FFF"/>
+      <path d="M 39 8 Q 45 2 50 1 Q 55 2 61 8 Z" fill="#DC143C"/>
+      <circle cx="50" cy="1" r="4" fill="#FFF"/>
+      
+      <!-- Hat shading -->
+      <ellipse cx="50" cy="8" rx="10" ry="2" fill="#B71C1C" opacity="0.3"/>
     </g>
   `;
   return svg;
 }
+
+
+
 
 function createPumpkinSVG() {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -408,18 +475,13 @@ function createPumpkinSVG() {
   svg.setAttribute("height", "100%");
   svg.innerHTML = `
     <g class="pumpkin">
-      <!-- Body segments -->
       <ellipse cx="50" cy="60" rx="28" ry="32" fill="#FF7518"/>
       <ellipse cx="38" cy="60" rx="12" ry="30" fill="#FF8C00"/>
       <ellipse cx="62" cy="60" rx="12" ry="30" fill="#FF8C00"/>
-      <!-- Stem -->
       <rect x="47" y="30" width="6" height="12" fill="#228B22" rx="2"/>
-      <!-- Eyes -->
       <polygon points="38,52 42,52 44,58 36,58" fill="#000"/>
       <polygon points="56,52 60,52 64,58 56,58" fill="#000"/>
-      <!-- Nose -->
       <polygon points="48,62 50,68 52,62" fill="#000"/>
-      <!-- Mouth -->
       <path d="M 35 72 Q 40 78 45 76 Q 50 74 55 76 Q 60 78 65 72" fill="none" stroke="#000" stroke-width="3"/>
       <rect x="36" y="72" width="4" height="6" fill="#000"/>
       <rect x="44" y="74" width="4" height="6" fill="#000"/>
@@ -437,24 +499,17 @@ function createBunnySVG() {
   svg.setAttribute("height", "100%");
   svg.innerHTML = `
     <g class="bunny">
-      <!-- Ears -->
       <ellipse cx="40" cy="35" rx="8" ry="22" fill="#FFF" transform="rotate(-15 40 35)"/>
       <ellipse cx="40" cy="35" rx="4" ry="18" fill="#FFB6C1" transform="rotate(-15 40 35)"/>
       <ellipse cx="60" cy="35" rx="8" ry="22" fill="#FFF" transform="rotate(15 60 35)"/>
       <ellipse cx="60" cy="35" rx="4" ry="18" fill="#FFB6C1" transform="rotate(15 60 35)"/>
-      <!-- Head -->
       <circle cx="50" cy="55" r="18" fill="#FFF"/>
-      <!-- Eyes -->
       <circle cx="44" cy="52" r="3" fill="#000"/>
       <circle cx="56" cy="52" r="3" fill="#000"/>
-      <!-- Nose -->
       <circle cx="50" cy="58" r="2" fill="#FFB6C1"/>
-      <!-- Mouth -->
       <path d="M 50 58 L 48 62" stroke="#000" stroke-width="1.5" fill="none"/>
       <path d="M 50 58 L 52 62" stroke="#000" stroke-width="1.5" fill="none"/>
-      <!-- Body -->
       <ellipse cx="50" cy="78" rx="15" ry="18" fill="#FFF"/>
-      <!-- Feet -->
       <ellipse cx="42" cy="92" rx="8" ry="5" fill="#FFF"/>
       <ellipse cx="58" cy="92" rx="8" ry="5" fill="#FFF"/>
     </g>
@@ -469,20 +524,14 @@ function createCupidSVG() {
   svg.setAttribute("height", "100%");
   svg.innerHTML = `
     <g class="cupid">
-      <!-- Wings -->
       <path d="M 30 50 Q 20 40 25 35 Q 30 30 35 40 Z" fill="#FFE4E1"/>
       <path d="M 70 50 Q 80 40 75 35 Q 70 30 65 40 Z" fill="#FFE4E1"/>
-      <!-- Body -->
       <ellipse cx="50" cy="65" rx="12" ry="18" fill="#FFE4C4"/>
-      <!-- Head -->
       <circle cx="50" cy="45" r="12" fill="#FFE4C4"/>
-      <!-- Eyes -->
       <circle cx="46" cy="43" r="2" fill="#000"/>
       <circle cx="54" cy="43" r="2" fill="#000"/>
-      <!-- Bow -->
       <line x1="35" y1="50" x2="45" y2="55" stroke="#8B4513" stroke-width="2"/>
       <path d="M 45 55 L 70 48" stroke="#F5DEB3" stroke-width="1"/>
-      <!-- Arrow -->
       <line x1="65" y1="45" x2="80" y2="40" stroke="#8B4513" stroke-width="2"/>
       <polygon points="80,40 85,38 83,42" fill="#DC143C"/>
     </g>
@@ -497,23 +546,17 @@ function createRocketSVG() {
   svg.setAttribute("height", "100%");
   svg.innerHTML = `
     <g class="rocket">
-      <!-- Flames -->
       <ellipse cx="45" cy="85" rx="6" ry="12" fill="#FF4500" opacity="0.7">
         <animate attributeName="ry" values="12;16;12" dur="0.3s" repeatCount="indefinite"/>
       </ellipse>
       <ellipse cx="55" cy="85" rx="6" ry="12" fill="#FFA500" opacity="0.7">
         <animate attributeName="ry" values="14;10;14" dur="0.3s" repeatCount="indefinite"/>
       </ellipse>
-      <!-- Body -->
       <rect x="42" y="40" width="16" height="40" fill="#DC143C" rx="2"/>
-      <!-- Nose cone -->
       <polygon points="50,20 42,40 58,40" fill="#FFD700"/>
-      <!-- Window -->
       <circle cx="50" cy="50" r="6" fill="#87CEEB"/>
-      <!-- Fins -->
       <polygon points="42,70 35,85 42,80" fill="#1E90FF"/>
       <polygon points="58,70 65,85 58,80" fill="#1E90FF"/>
-      <!-- Details -->
       <rect x="44" y="65" width="12" height="2" fill="#FFD700"/>
       <rect x="44" y="70" width="12" height="2" fill="#FFD700"/>
     </g>
@@ -528,24 +571,17 @@ function createLeprechaunSVG() {
   svg.setAttribute("height", "100%");
   svg.innerHTML = `
     <g class="leprechaun">
-      <!-- Hat -->
       <rect x="38" y="30" width="24" height="8" fill="#228B22"/>
       <path d="M 35 38 L 40 25 L 60 25 L 65 38 Z" fill="#228B22"/>
       <rect x="38" y="37" width="24" height="3" fill="#000"/>
       <rect x="46" y="35" width="8" height="4" fill="#FFD700"/>
-      <!-- Head -->
       <circle cx="50" cy="50" r="14" fill="#FFE4C4"/>
-      <!-- Beard -->
       <path d="M 38 50 Q 42 62 50 60 Q 58 62 62 50" fill="#FF6347"/>
-      <!-- Eyes -->
       <circle cx="44" cy="48" r="2" fill="#000"/>
       <circle cx="56" cy="48" r="2" fill="#000"/>
-      <!-- Body -->
       <rect x="40" y="62" width="20" height="24" fill="#228B22" rx="3"/>
-      <!-- Belt -->
       <rect x="38" y="72" width="24" height="4" fill="#000"/>
       <rect x="48" y="70" width="4" height="8" fill="#FFD700"/>
-      <!-- Legs -->
       <rect x="42" y="85" width="6" height="10" fill="#000"/>
       <rect x="52" y="85" width="6" height="10" fill="#000"/>
     </g>
@@ -563,9 +599,6 @@ const CHARACTER_CREATORS = {
   leprechaun: createLeprechaunSVG
 };
 
-/* ===============================
-   Runner (random) logic
-   =============================== */
 let runnerTimeout = null;
 let prevActiveKey = null;
 
@@ -591,38 +624,27 @@ function pickRunnerForHoliday(key){
 }
 
 async function spawnRunner(holidayKey, forceSpawn = false){
-  console.log('spawnRunner called with:', holidayKey, 'forceSpawn:', forceSpawn);
   if(!holidayKey) return;
-  // skip sometimes to keep it light (but not when forced via click)
   if(!forceSpawn && Math.random() < 0.45) return scheduleNextRunner();
 
   const runnerKey = pickRunnerForHoliday(holidayKey);
-  console.log('Selected runner:', runnerKey);
   const creator = CHARACTER_CREATORS[runnerKey];
-  if(!creator) {
-    console.log('No creator found for:', runnerKey);
-    return scheduleNextRunner();
-  }
+  if(!creator) return scheduleNextRunner();
 
   const el = document.createElement('div');
   el.className = 'runner';
   const vw = Math.max(document.documentElement.clientWidth, window.innerWidth || 480);
   const duration = Math.max(4, Math.round(RUN_DURATION_BASE_SEC * (vw / 480)));
 
-  console.log('Creating SVG...');
   const svg = creator();
   el.appendChild(svg);
 
-  console.log('Adding runner to body, duration:', duration);
   document.body.appendChild(el);
   el.style.animation = `runAcross ${duration}s linear, bob 0.6s ease-in-out infinite`;
   
-  el.addEventListener('animationend', ()=> {
-    console.log('Runner animation ended, removing');
-    el.remove();
-  });
+  el.addEventListener('animationend', ()=> el.remove());
 
-  if(!forceSpawn) scheduleNextRunner(); // don't schedule next when manually triggered
+  if(!forceSpawn) scheduleNextRunner();
 }
 
 function scheduleNextRunner(){
@@ -633,35 +655,25 @@ function scheduleNextRunner(){
   runnerTimeout = setTimeout(()=> spawnRunner(active.key), ms);
 }
 
-/* ===============================
-   Daily + hourly refresh (to ensure day rollover)
-   =============================== */
 function scheduleDailyReloadAt(hour = 0, minute = 5) {
   const now = new Date();
   const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, hour, minute, 0, 0);
   const ms = next.getTime() - now.getTime();
   setTimeout(() => {
     try { location.reload(); } catch(e){ /* ignore */ }
-    // schedule next day
     scheduleDailyReloadAt(hour, minute);
   }, ms + 200);
 }
 
-/* Hourly fallback reload */
 function scheduleHourlyReload() {
   setInterval(() => {
     try { location.reload(); } catch(e){ /* ignore */ }
-  }, 60*60*1000); // every hour
+  }, 60*60*1000);
 }
 
-/* ===============================
-   Startup & main loop
-   =============================== */
 applyScale();
 updateClockAndCountdown();
-let colorTimerRef = null;
 
-// initial color cycle and schedule
 (function init(){
   const active = getActiveHoliday();
   if(active.active){
@@ -672,11 +684,9 @@ let colorTimerRef = null;
     startColorCycle(null);
   }
 
-  // Regular tick: update clock and check holiday state
   setInterval(() => {
     updateClockAndCountdown();
 
-    // Check holiday state and start/stop theme & runners accordingly
     const activeNow = getActiveHoliday();
     if(activeNow.active){
       if(prevActiveKey !== activeNow.key){
@@ -692,24 +702,21 @@ let colorTimerRef = null;
         if(runnerTimeout) { clearTimeout(runnerTimeout); runnerTimeout = null; }
       }
     }
-  }, 3000); // check every 3s for holiday changes (fast enough)
+  }, 3000);
 
-  // Clock updates per second for time + countdown freshness
   setInterval(() => updateClockAndCountdown(), 1000);
 
-  // Autoscale on start and when window changes
   window.addEventListener('resize', () => setTimeout(applyScale, 80));
   window.addEventListener('orientationchange', () => setTimeout(applyScale, 200));
   setTimeout(applyScale, 300);
 
-  // schedule reloads (both daily and hourly)
-  scheduleDailyReloadAt(0,5); // 12:05 AM daily
-  scheduleHourlyReload();     // hourly fallback
+  scheduleDailyReloadAt(0,5);
+  scheduleHourlyReload();
 })();
 
-/* expose helpers for interactive debug (optional) */
 window.__holidayClock = {
   getActiveHoliday,
+  getNextHoliday,
   spawnRunnerNow: () => { const a = getActiveHoliday(); if(a.active) spawnRunner(a.key); },
   applyScale
 };
